@@ -3,7 +3,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
-import { google } from 'googleapis';
+
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
@@ -46,15 +46,6 @@ app.set('trust proxy', true);
 app.use(express.json());
 app.use(cookieParser());
 
-// --- OAuth Configuration ---
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  // The redirect URI will be constructed dynamically based on the request host
-  // or use a fixed one if provided in env.
-  process.env.GOOGLE_REDIRECT_URI
-);
-
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) {
   console.error('FATAL: SESSION_SECRET environment variable is not set. Server will not start.');
@@ -71,13 +62,7 @@ const COOKIE_OPTIONS = {
 
 // --- Auth Routes ---
 
-// Helper to get Redirect URI
-const getRedirectUri = (req) => {
-  // 1. If GOOGLE_REDIRECT_URI is explicitly set (e.g. production manual override)
-  if (process.env.GOOGLE_REDIRECT_URI) {
-    return process.env.GOOGLE_REDIRECT_URI;
-  }
-  
+
   // 2. Use APP_URL from environment (Standard for AI Studio)
   if (process.env.APP_URL) {
     // Remove trailing slash if present
@@ -91,49 +76,6 @@ const getRedirectUri = (req) => {
   return `${protocol}://${host}/api/auth/google-callback`;
 };
 
-// 1. Get Google Auth URL
-app.get('/api/auth/google-url', (req, res) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return res.status(500).json({ error: 'Missing Google OAuth Credentials' });
-  }
-
-  const redirectUri = getRedirectUri(req);
-  console.log('Generating Auth URL with redirect_uri:', redirectUri);
-  
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ],
-    redirect_uri: redirectUri
-  });
-  
-  res.json({ url: authUrl });
-});
-
-// 2. Google Callback
-app.get('/api/auth/google-callback', async (req, res) => {
-  const { code } = req.query;
-  
-  try {
-    const redirectUri = getRedirectUri(req);
-    console.log('Handling Callback with redirect_uri:', redirectUri);
-    
-    // Create a new client instance for this request to avoid race conditions with global client
-    const client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri
-    );
-
-    const { tokens } = await client.getToken(code);
-    client.setCredentials(tokens);
-
-    const oauth2 = google.oauth2({ version: 'v2', auth: client });
-    const userInfo = await oauth2.userinfo.get();
-    
-    const { email, name, picture } = userInfo.data;
 
     // Check if user exists
     let user = findUser(email);
