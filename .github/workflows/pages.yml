@@ -45,8 +45,8 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build
-        # Passes --base so Vite embeds the correct asset paths for GitHub Pages.
-        # If you ever switch build tools, update this step accordingly.
+        env:
+          VITE_APPS_SCRIPT_URL: ${{ vars.VITE_APPS_SCRIPT_URL }}
         run: npm run build -- --base ${{ steps.setup_pages.outputs.base_path }}
 
       - name: Detect build output directory
