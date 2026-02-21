@@ -14,7 +14,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
   register: (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => Promise<any>;
   logout: () => void;
   updateProfile: (data: { fullName: string; position: string; affiliation: string }) => Promise<void>;
@@ -22,17 +22,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const APPS_SCRIPT_URL =
+  import.meta.env.VITE_APPS_SCRIPT_URL ||
+  'https://script.google.com/macros/s/AKfycbzZ0SkJ3W3tNyBCjIprVWSCkGfmAyrVoEoBM7G7HWruOLu0phcNY7uYw5MZM-yd33R3/exec';
+
+const LS_KEY = 'maechaem_user';
+
+async function postToAppsScript(payload: any) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const checkUser = async () => {
     try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      setUser(data.user);
-    } catch (error) {
-      console.error('Failed to fetch user', error);
+      const raw = localStorage.getItem(LS_KEY);
+      setUser(raw ? JSON.parse(raw) : null);
+    } catch (e) {
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -43,87 +56,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkUser();
   }, []);
 
-  const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
-    try {
-      // ใช้ proxy-server endpoint
-      const payload = {
-        ...data,
-        username: user?.email || user?.name || '', // ใช้ email หรือ name เป็น username
-      };
-      const res = await fetch('http://localhost:3001/updateProfile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error('Failed to update profile');
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to update profile');
-      if (user) {
-        setUser({
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          role: user.role,
-          fullName: data.fullName,
-          position: data.position,
-          affiliation: data.affiliation
-        });
-      }
-    } catch (error) {
-      console.error('Update profile failed', error);
-      throw error;
-    }
-  };
-
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/login', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const result = await res.json();
-      if (res.ok && result.success && result.user) {
+      const result = await postToAppsScript({ action: 'login', username, password });
+      if (result?.success && result.user) {
         setUser(result.user);
-        setIsLoading(false);
+        localStorage.setItem(LS_KEY, JSON.stringify(result.user));
         return { success: true };
-      } else {
-        setUser(null);
-        setIsLoading(false);
-        return { success: false, message: result.error || "เข้าสู่ระบบไม่สำเร็จ" };
       }
-    } catch (error: any) {
       setUser(null);
+      localStorage.removeItem(LS_KEY);
+      return { success: false, message: result?.error || 'เข้าสู่ระบบไม่สำเร็จ' };
+    } catch (e: any) {
+      setUser(null);
+      localStorage.removeItem(LS_KEY);
+      return { success: false, message: e?.message || 'เข้าสู่ระบบไม่สำเร็จ' };
+    } finally {
       setIsLoading(false);
-      return { success: false, message: error.message || "เกิดข้อผิดพลาด" };
     }
   };
 
   const register = async (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('http://localhost:3001/register', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
-      });
-      const result = await res.json();
-      setIsLoading(false);
-      return result;
-    } catch (error: any) {
-      setIsLoading(false);
-      return { success: false, error: error.message || "เกิดข้อผิดพลาด" };
-    }
+    const username = data.email;
+    const result = await postToAppsScript({
+      action: 'register',
+      username,
+      email: data.email,
+      password: data.password,
+      fullName: data.fullname,
+      position: data.position,
+      affiliation: data.organization,
+    });
+    return result;
   };
 
-  const logout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-    } catch (error) {
-      console.error('Logout failed', error);
-    }
+  const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
+    if (!user) throw new Error('Unauthorized');
+
+    const result = await postToAppsScript({
+      action: 'updateUser',
+      username: (user as any).username || user.email,
+      email: user.email,
+      fullName: data.fullName,
+      position: data.position,
+      affiliation: data.affiliation,
+    });
+
+    if (!result?.success) throw new Error(result?.error || 'อัปเดตข้อมูลไม่สำเร็จ');
+
+    const nextUser = { ...user, ...data };
+    setUser(nextUser);
+    localStorage.setItem(LS_KEY, JSON.stringify(nextUser));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem(LS_KEY);
   };
 
   return (
