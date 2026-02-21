@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-
-const API_URL = "http://localhost:3001/register";
+import { apiPost } from '../services/sheetsService';
 
 export const Register: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const [form, setForm] = useState({
@@ -33,17 +32,20 @@ export const Register: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     }
     setIsLoading(true);
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
+      const data = await apiPost({
+        action: 'register',
+        username: form.email,
+        email: form.email,
+        password: form.password,
+        fullName: form.fullname,
+        position: form.position,
+        affiliation: form.organization
       });
-      const data = await res.json();
       if (data.success) {
         setSuccess('สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ');
         setForm({ fullname: '', email: '', password: '', confirm_password: '', position: '', organization: '' });
       } else {
-        setError(data.error || 'สมัครสมาชิกไม่สำเร็จ');
+        setError(data.error || data.message || 'สมัครสมาชิกไม่สำเร็จ');
       }
     } catch (err) {
       setError('เกิดข้อผิดพลาดในการเชื่อมต่อ');

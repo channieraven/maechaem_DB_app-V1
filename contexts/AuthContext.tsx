@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiPost } from '../services/sheetsService';
 
 interface User {
   email: string;
@@ -22,52 +23,44 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const USER_STORAGE_KEY = 'auth_user';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const checkUser = async () => {
+  useEffect(() => {
     try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      setUser(data.user);
+      const stored = localStorage.getItem(USER_STORAGE_KEY);
+      if (stored) {
+        setUser(JSON.parse(stored));
+      }
     } catch (error) {
-      console.error('Failed to fetch user', error);
-      setUser(null);
+      console.error('Failed to parse stored user data:', error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    checkUser();
   }, []);
 
   const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
     try {
-      // ใช้ proxy-server endpoint
-      const payload = {
-        ...data,
-        username: user?.email || user?.name || '', // ใช้ email หรือ name เป็น username
-      };
-      const res = await fetch('http://localhost:3001/updateProfile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      const result = await apiPost({
+        action: 'updateUser',
+        username: user?.email || user?.name || '',
+        fullName: data.fullName,
+        position: data.position,
+        affiliation: data.affiliation
       });
-      if (!res.ok) throw new Error('Failed to update profile');
-      const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to update profile');
       if (user) {
-        setUser({
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          role: user.role,
+        const updated: User = {
+          ...user,
           fullName: data.fullName,
           position: data.position,
           affiliation: data.affiliation
-        });
+        };
+        setUser(updated);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
       }
     } catch (error) {
       console.error('Update profile failed', error);
@@ -78,51 +71,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/login', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const result = await res.json();
-      if (res.ok && result.success && result.user) {
+      const result = await apiPost({ action: 'login', username: email, password });
+      if (result.success && result.user) {
         setUser(result.user);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user));
         setIsLoading(false);
         return { success: true };
       } else {
         setUser(null);
         setIsLoading(false);
-        return { success: false, message: result.error || "เข้าสู่ระบบไม่สำเร็จ" };
+        return { success: false, message: result.error || result.message || 'เข้าสู่ระบบไม่สำเร็จ' };
       }
     } catch (error: any) {
       setUser(null);
       setIsLoading(false);
-      return { success: false, message: error.message || "เกิดข้อผิดพลาด" };
+      return { success: false, message: error.message || 'เกิดข้อผิดพลาด' };
     }
   };
 
   const register = async (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/register', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+      const result = await apiPost({
+        action: 'register',
+        username: data.email,
+        email: data.email,
+        password: data.password,
+        fullName: data.fullname,
+        position: data.position,
+        affiliation: data.organization
       });
-      const result = await res.json();
       setIsLoading(false);
       return result;
     } catch (error: any) {
       setIsLoading(false);
-      return { success: false, error: error.message || "เกิดข้อผิดพลาด" };
+      return { success: false, error: error.message || 'เกิดข้อผิดพลาด' };
     }
   };
 
-  const logout = async () => {
+  const logout = () => {
+    setUser(null);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
+      localStorage.removeItem(USER_STORAGE_KEY);
     } catch (error) {
-      console.error('Logout failed', error);
+      console.error('Failed to clear user session', error);
     }
   };
 

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { apiGet } from '../services/sheetsService';
 
 // กำหนด type ให้ตรงกับข้อมูลใน Google Sheets
 type UserData = {
@@ -13,20 +15,18 @@ type UserData = {
 };
 
 const ProfileView: React.FC = () => {
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState<UserData | null>(null);
 
   useEffect(() => {
-    // TODO: เปลี่ยน email ให้เป็น email ของผู้ใช้ที่ login จริง
-    fetch('http://localhost:3001/getUser', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'mchayanuch@gmail.com' })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setUser(data.user);
-      });
-  }, []);
+    if (!authUser?.email) return;
+    apiGet('users')
+      .then((rows: UserData[]) => {
+        const found = rows.find((r: UserData) => r.email === authUser.email);
+        if (found) setUser(found);
+      })
+      .catch(err => console.error('Failed to load profile', err));
+  }, [authUser?.email]);
 
   if (!user) return <div>Loading...</div>;
 
