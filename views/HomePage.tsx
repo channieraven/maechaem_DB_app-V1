@@ -41,8 +41,6 @@ const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
             </div>
           </div>
           <div className="flex items-center gap-6">
-            <a href="/privacy" className="text-sm font-medium text-gray-500 hover:text-gray-900 hidden sm:block">นโยบายความเป็นส่วนตัว</a>
-            <a href="/terms" className="text-sm font-medium text-gray-500 hover:text-gray-900 hidden sm:block">ข้อกำหนดการใช้งาน</a>
             <button
               onClick={handleLogin}
               disabled={isLoading}
@@ -170,11 +168,6 @@ const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
                 <p>
                   <strong className="text-gray-900">รูปโปรไฟล์:</strong> แสดงในส่วนหัวของแอปพลิเคชันเพื่อระบุผู้ใช้ที่เข้าสู่ระบบในปัจจุบัน
                 </p>
-                <div className="pt-4 border-t border-gray-200 mt-4">
-                  <p className="text-xs text-gray-400">
-                    การลงชื่อเข้าใช้ถือว่าคุณยอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัวของเรา
-                  </p>
-                </div>
               </div>
             </div>
           </div>
@@ -193,8 +186,6 @@ const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
               </div>
             </div>
             <div className="flex gap-6 text-xs text-gray-400">
-              <a href="/privacy" className="hover:text-white transition-colors">นโยบายความเป็นส่วนตัว</a>
-              <a href="/terms" className="hover:text-white transition-colors">ข้อกำหนดการใช้งาน</a>
               <a href="mailto:support@maechaem-tree-db.com" className="hover:text-white transition-colors">ติดต่อฝ่ายสนับสนุน</a>
             </div>
             <div className="text-xs text-gray-500">

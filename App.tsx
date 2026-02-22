@@ -19,8 +19,6 @@ import StatsView from './views/StatsView';
 import HistoryView from './views/HistoryView';
 import PlotInfoView from './views/PlotInfoView';
 import ProfileView from './views/ProfileView';
-import PrivacyPolicy from './views/PrivacyPolicy';
-import TermsOfService from './views/TermsOfService';
 import HomePage from './views/HomePage';
 
 // Define treeCodeRegex at the top-level scope so it's accessible everywhere
@@ -636,9 +634,6 @@ const App: React.FC = () => {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-  if (currentPath === '/privacy') return <PrivacyPolicy />;
-  if (currentPath === '/terms') return <TermsOfService />;
-
   if (isAuthLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -935,8 +930,6 @@ const App: React.FC = () => {
           )}
 
           {activeView === 'profile' && <ProfileView />}
-          {activeView === 'privacy' && <PrivacyPolicy />}
-          {activeView === 'terms' && <TermsOfService />}
         </section>
       </main>
 
