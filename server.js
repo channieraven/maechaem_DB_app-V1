@@ -62,91 +62,16 @@ const COOKIE_OPTIONS = {
 
 // --- Auth Routes ---
 
-
-  // 2. Use APP_URL from environment (Standard for AI Studio)
-  if (process.env.APP_URL) {
-    // Remove trailing slash if present
-    const baseUrl = process.env.APP_URL.replace(/\/$/, '');
-    return `${baseUrl}/api/auth/google-callback`;
-  }
-
-  // 3. Fallback: Construct dynamically (Unreliable behind proxies, but fallback)
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  return `${protocol}://${host}/api/auth/google-callback`;
+// Helper: check if an email is in the ADMIN_EMAIL env var (comma-separated list)
+const isAdminEmail = (email) => {
+  const list = (process.env.ADMIN_EMAIL || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.toLowerCase());
 };
 
-
-    // Check if user exists
-    let user = findUser(email);
-    
-    if (!user) {
-      // New User
-      const isFirstUser = getUsers().length === 0;
-      user = {
-        email,
-        name,
-        picture,
-        role: isFirstUser ? 'admin' : 'pending', // First user is admin
-        createdAt: new Date().toISOString(),
-        fullName: '',
-        position: '',
-        affiliation: ''
-      };
-      saveUser(user);
-      console.log(`New user registered: ${email} (${user.role})`);
-    } else {
-      // Update info
-      user = { ...user, name, picture, lastLogin: new Date().toISOString() };
-      saveUser(user);
-    }
-
-    // Create JWT
-    const token = jwt.sign(
-      { 
-        email: user.email, 
-        role: user.role, 
-        name: user.name, 
-        picture: user.picture,
-        fullName: user.fullName,
-        position: user.position,
-        affiliation: user.affiliation
-      },
-      SESSION_SECRET,
-      { expiresIn: '730d' }
-    );
-
-    // Set Cookie
-    res.cookie('auth_token', token, COOKIE_OPTIONS);
-
-    // Close popup — use app origin for postMessage to prevent interception
-    const appOrigin = process.env.APP_URL
-      ? process.env.APP_URL.replace(/\/$/, '')
-      : `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
-    // Serialize user safely and escape </script> sequences to prevent XSS
-    const safeUserJson = JSON.stringify(user).replace(/<\/script>/gi, '<\\/script>');
-    res.send(`
-      <html>
-        <script>
-          if (window.opener) {
-            window.opener.postMessage({ type: 'AUTH_SUCCESS', user: ${safeUserJson} }, ${JSON.stringify(appOrigin)});
-            window.close();
-          } else {
-            window.location.href = '/';
-          }
-        </script>
-        <body>Authentication successful. Closing...</body>
-      </html>
-    `);
-
-  } catch (error) {
-    console.error('Auth Error:', error);
-    // Send detailed error for debugging
-    res.status(500).send(`Authentication failed: ${error.message}`);
-  }
-});
-
-// 3. Get Current User
+// 1. Get Current User
 app.get('/api/auth/me', (req, res) => {
   const token = req.cookies.auth_token;
   if (!token) return res.json({ user: null });
@@ -161,7 +86,7 @@ app.get('/api/auth/me', (req, res) => {
       console.log(`Restoring user ${decoded.email} from token after server restart`);
       user = {
         email: decoded.email,
-        role: decoded.role || 'pending',
+        role: (decoded.role === 'admin' || isAdminEmail(decoded.email)) ? 'admin' : (decoded.role || 'pending'),
         name: decoded.name,
         picture: decoded.picture,
         fullName: decoded.fullName || '',
@@ -171,8 +96,12 @@ app.get('/api/auth/me', (req, res) => {
         lastLogin: new Date().toISOString()
       };
       saveUser(user);
+    } else if (isAdminEmail(user.email) && user.role !== 'admin') {
+      // Promote to admin if ADMIN_EMAIL is set and role hasn't been updated yet
+      user = { ...user, role: 'admin' };
+      saveUser(user);
     }
-    
+
     res.json({ user });
   } catch (e) {
     console.error('Token verification failed:', e.message);
