@@ -34,12 +34,11 @@ export const Register: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     try {
       const data = await apiPost({
         action: 'register',
-        username: form.email,
         email: form.email,
         password: form.password,
-        fullName: form.fullname,
+        fullname: form.fullname,
         position: form.position,
-        affiliation: form.organization
+        organization: form.organization
       });
       if (data.success) {
         setSuccess('สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ');

@@ -94,12 +94,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await apiPost({
         action: 'register',
-        username: data.email,
         email: data.email,
         password: data.password,
-        fullName: data.fullname,
+        fullname: data.fullname,
         position: data.position,
-        affiliation: data.organization
+        organization: data.organization
       });
       setIsLoading(false);
       return result;
