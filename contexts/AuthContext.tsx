@@ -6,7 +6,7 @@ interface User {
   username?: string;
   name: string;
   picture: string;
-  role: 'pending' | 'researcher' | 'admin';
+  role: 'pending' | 'researcher' | 'admin' | 'staff' | 'executive' | 'external';
   fullName?: string;
   position?: string;
   affiliation?: string;
