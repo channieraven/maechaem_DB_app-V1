@@ -84,11 +84,6 @@ export const Login: React.FC<LoginProps> = ({ onBack, setShowRegister }) => {
           เฉพาะนักวิจัยที่ได้รับการยืนยันเท่านั้นที่สามารถเข้าถึงแอปพลิเคชันนี้ได้
           บัญชีใหม่ต้องได้รับการอนุมัติจากผู้ดูแลระบบ
         </p>
-        <div className="flex justify-center gap-4 text-xs text-gray-400 mt-4">
-          <a href="/privacy" className="hover:text-gray-600 underline">นโยบายความเป็นส่วนตัว</a>
-          <span>•</span>
-          <a href="/terms" className="hover:text-gray-600 underline">ข้อกำหนดการใช้งาน</a>
-        </div>
       </div>
     </div>
   );

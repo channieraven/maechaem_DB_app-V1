@@ -104,5 +104,5 @@ export interface PlotImage {
   date?: string;
 }
 
-export type ViewType = 'table' | 'coords' | 'map' | 'stats' | 'history' | 'plotInfo' | 'profile' | 'privacy' | 'terms';
+export type ViewType = 'table' | 'coords' | 'map' | 'stats' | 'history' | 'plotInfo' | 'profile';
 export type PlantCategory = 'ไม้ป่า' | 'ยางพารา' | 'ผลผลิตไผ่' | 'ไม้ผล' | 'กล้วย';
