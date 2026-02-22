@@ -10,9 +10,12 @@ type UserData = {
   position?: string;
   organization?: string;
   role?: string;
-  approved?: string;
+  approved?: string | boolean;
   created_at?: string;
 };
+
+const isApproved = (approved?: string | boolean): boolean =>
+  String(approved).toUpperCase() === 'TRUE';
 
 /** Normalise apiGet response to a plain array regardless of response shape */
 const extractRows = (res: any): UserData[] =>
@@ -146,11 +149,11 @@ const MyProfileTab: React.FC<{ authUser: any }> = ({ authUser }) => {
           }
         />
         <InfoRow
-          icon={userData?.approved === 'TRUE' ? <ShieldCheck size={16} className="text-green-500" /> : <ShieldAlert size={16} className="text-orange-400" />}
+          icon={isApproved(userData?.approved) ? <ShieldCheck size={16} className="text-green-500" /> : <ShieldAlert size={16} className="text-orange-400" />}
           label="สถานะบัญชี"
           value={
-            <span className={userData?.approved === 'TRUE' ? 'text-green-600' : 'text-orange-500'}>
-              {userData?.approved === 'TRUE' ? 'อนุมัติแล้ว' : 'รออนุมัติ'}
+            <span className={isApproved(userData?.approved) ? 'text-green-600' : 'text-orange-500'}>
+              {isApproved(userData?.approved) ? 'อนุมัติแล้ว' : 'รออนุมัติ'}
             </span>
           }
         />
