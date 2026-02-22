@@ -75,4 +75,4 @@ When the app is deployed as a static site on GitHub Pages, any value baked into 
 - **GitHub Actions secret (build-time only):** If the key is *only* needed at build time (e.g. for static generation), add it as a repository secret (`Settings → Secrets → Actions`) and reference it as `${{ secrets.GEMINI_API_KEY }}` in the workflow — it will **not** appear in the deployed output.
 - **Do not** commit `.env.local` or any file containing real API keys to the repository.
 
-trigger deploy 2
+trigger deploy 3
