@@ -42,14 +42,4 @@ In your repository go to **Settings → Pages** and set **Source** to **"GitHub 
 
 ---
 
-## Security — GEMINI_API_KEY
-
-> ⚠️ **Do not expose your Gemini API key in the client-side bundle.**
-
-When the app is deployed as a static site on GitHub Pages, any value baked into the JavaScript bundle is publicly readable. A few safe options:
-
-- **Backend proxy (recommended):** Keep the key in a server-side environment variable (e.g. in the existing `server.js` / `proxy-server.cjs`) and route all Gemini requests through that proxy. Never pass the key to the Vite build.
-- **GitHub Actions secret (build-time only):** If the key is *only* needed at build time (e.g. for static generation), add it as a repository secret (`Settings → Secrets → Actions`) and reference it as `${{ secrets.GEMINI_API_KEY }}` in the workflow — it will **not** appear in the deployed output.
-- **Do not** commit `.env.local` or any file containing real API keys to the repository.
-
 trigger deploy 3
