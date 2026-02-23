@@ -6,7 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const APPSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwZhTL7sfV4KCPFUZTGOS1BsMKHKu3FaQJQzkgHg7vAghAQ6ORcmNsK46E8z2G2nCsL/exec';
+const APPSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzT0rZVvpzQ-WGp9XYvuxxYZvHXe-_Omcu5nvyYn6mpe8Fo6YLpIkktu5UqJXyR0MUX/exec';
 
 app.get('/', (req, res) => {
   res.send('Proxy server is running');
@@ -118,3 +118,4 @@ app.post('/getUser', async (req, res) => {
 app.listen(3001, () => {
   console.log('Proxy server running on http://localhost:3001');
 });
+
