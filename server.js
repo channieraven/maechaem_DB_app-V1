@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
+import crypto from 'crypto';
 
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -38,6 +39,23 @@ const saveUser = (user) => {
 
 const findUser = (email) => getUsers().find(u => u.email === email);
 
+// --- Password Helpers ---
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+};
+
+const verifyPassword = (password, stored) => {
+  const colonIndex = stored.indexOf(':');
+  if (colonIndex === -1) return false;
+  const salt = stored.slice(0, colonIndex);
+  const hash = stored.slice(colonIndex + 1);
+  if (!salt || !hash) return false;
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(verifyHash, 'hex'));
+};
+
 // --- App Setup ---
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -70,6 +88,73 @@ const isAdminEmail = (email) => {
     .filter(Boolean);
   return list.includes(email.toLowerCase());
 };
+
+// 2. Register
+app.post('/api/auth/register', (req, res) => {
+  const { fullname, email, password, position, organization } = req.body;
+
+  if (!fullname || !email || !password || !position || !organization) {
+    return res.status(400).json({ success: false, error: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+  }
+
+  if (findUser(email)) {
+    return res.status(409).json({ success: false, error: 'อีเมลนี้ถูกใช้งานแล้ว' });
+  }
+
+  const newUser = {
+    email,
+    name: fullname,
+    fullname,
+    picture: '',
+    role: isAdminEmail(email) ? 'admin' : 'pending',
+    position,
+    organization,
+    password: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  };
+
+  saveUser(newUser);
+  res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ' });
+});
+
+// 3. Login
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
+  }
+
+  const user = findUser(email);
+  if (!user || !user.password || !verifyPassword(password, user.password)) {
+    return res.status(401).json({ success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+  }
+
+  // Auto-promote to admin if configured
+  if (isAdminEmail(email) && user.role !== 'admin') {
+    user.role = 'admin';
+    saveUser(user);
+  }
+
+  const token = jwt.sign(
+    {
+      email: user.email,
+      role: user.role,
+      name: user.name || user.fullname,
+      picture: user.picture || '',
+      fullName: user.fullName || user.fullname || '',
+      position: user.position || '',
+      affiliation: user.affiliation || user.organization || '',
+    },
+    SESSION_SECRET,
+    { expiresIn: '730d' }
+  );
+
+  res.cookie('auth_token', token, COOKIE_OPTIONS);
+
+  const { password: _pw, ...userWithoutPassword } = user;
+  res.json({ success: true, user: userWithoutPassword });
+});
 
 // 1. Get Current User
 app.get('/api/auth/me', (req, res) => {
@@ -203,7 +288,7 @@ app.put('/api/admin/users/:email/role', (req, res) => {
     const { email } = req.params;
     const { role } = req.body;
 
-    if (!['pending', 'researcher', 'admin'].includes(role)) {
+    if (!['pending', 'researcher', 'admin', 'staff', 'executive', 'external'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 

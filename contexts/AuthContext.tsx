@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiPost } from '../services/sheetsService';
 
 interface User {
   email: string;
@@ -30,27 +29,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(USER_STORAGE_KEY);
-      if (stored) {
-        setUser(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error('Failed to parse stored user data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Try the server session first, fall back to localStorage
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+        } else {
+          const stored = localStorage.getItem(USER_STORAGE_KEY);
+          if (stored) setUser(JSON.parse(stored));
+        }
+      })
+      .catch(() => {
+        // Server not reachable (e.g. static deployment) — use localStorage
+        try {
+          const stored = localStorage.getItem(USER_STORAGE_KEY);
+          if (stored) setUser(JSON.parse(stored));
+        } catch (err) {
+          console.error('Failed to parse stored user data:', err);
+        }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
     try {
-      const result = await apiPost({
-        action: 'updateUser',
-        username: user?.email || user?.name || '',
-        fullName: data.fullName,
-        position: data.position,
-        affiliation: data.affiliation
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
       });
+      const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to update profile');
       if (user) {
         const updated: User = {
@@ -71,7 +82,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const result = await apiPost({ action: 'login', username: email, password });
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+      const result = await res.json();
       if (result.success && result.user) {
         setUser(result.user);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user));
@@ -92,14 +109,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => {
     setIsLoading(true);
     try {
-      const result = await apiPost({
-        action: 'register',
-        email: data.email,
-        password: data.password,
-        fullname: data.fullname,
-        position: data.position,
-        organization: data.organization
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fullname: data.fullname,
+          email: data.email,
+          password: data.password,
+          position: data.position,
+          organization: data.organization,
+        }),
       });
+      const result = await res.json();
       setIsLoading(false);
       return result;
     } catch (error: any) {
@@ -115,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to clear user session', error);
     }
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
   };
 
   return (
