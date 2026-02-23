@@ -93,11 +93,14 @@ export interface GrowthFormData {
   pricePerHand: string;
 }
 
+export type GalleryCategory = 'tree' | 'soil' | 'atmosphere' | 'other';
+
 export interface PlotImage {
   id: string;
   plotCode: string;
   // Updated types to support 2 pre-plans and 1 post-plan
   type: 'plan_pre_1' | 'plan_pre_2' | 'plan_post_1' | 'gallery' | 'plan_pre'; // keep plan_pre for backward compatibility if needed
+  galleryCategory?: GalleryCategory; // only relevant when type === 'gallery'
   url: string;
   description?: string;
   uploader?: string;

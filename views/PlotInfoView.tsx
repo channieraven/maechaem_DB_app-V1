@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Download, Upload, Image as ImageIcon, Map as MapIcon, User, Calendar, Plus, X, Loader2, Maximize, ZoomIn, ZoomOut, RotateCcw, CloudLightning } from 'lucide-react';
 import { PLOT_LIST, PLOT_PLAN_DATA } from '../constants';
-import { PlotImage } from '../types';
+import { PlotImage, GalleryCategory } from '../types';
 import { uploadToCloudinary } from '../services/cloudinaryService';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -219,6 +219,13 @@ const PlanCard = ({
     </div>
 );
 
+const GALLERY_GROUPS: { key: GalleryCategory; label: string; emoji: string }[] = [
+  { key: 'tree',       label: 'ภาพต้นไม้',    emoji: '🌳' },
+  { key: 'soil',       label: 'ภาพดิน',       emoji: '🪨' },
+  { key: 'atmosphere', label: 'ภาพบรรยากาศ', emoji: '🌄' },
+  { key: 'other',      label: 'ภาพอื่น ๆ',   emoji: '📷' },
+];
+
 const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage, onNavigateToMap }) => {
   const { user } = useAuth();
   const [selectedPlot, setSelectedPlot] = useState(PLOT_LIST[0].code);
@@ -232,6 +239,7 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
   const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
   const [uploadType, setUploadType] = useState<PlotImage['type']>('gallery');
   const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadGalleryCategory, setUploadGalleryCategory] = useState<GalleryCategory>('tree');
   const [isUploading, setIsUploading] = useState(false);
 
   // Update uploader if user changes
@@ -261,6 +269,13 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
     return allImages.filter(p => p.plotCode === selectedPlot && p.type === 'gallery');
   }, [selectedPlot, allImages]);
 
+  const groupedGallery = useMemo(() => {
+    return GALLERY_GROUPS.map(group => ({
+      ...group,
+      imgs: galleryList.filter(img => (img.galleryCategory ?? 'other') === group.key),
+    }));
+  }, [galleryList]);
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFile || !uploadUploader) return;
@@ -281,6 +296,7 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
           id: Date.now().toString(),
           plotCode: selectedPlot,
           type: uploadType,
+          ...(uploadType === 'gallery' && { galleryCategory: uploadGalleryCategory }),
           url: imageUrl,
           description: desc,
           uploader: uploadUploader,
@@ -435,44 +451,8 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
          )}
 
          {activeTab === 'gallery' && (
-            <div className="animate-in fade-in duration-300">
-               {galleryList.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                     {galleryList.map(img => (
-                        <div 
-                           key={img.id} 
-                           className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-all cursor-pointer"
-                           onClick={() => setViewImage(img)}
-                        >
-                           <div className="aspect-square bg-gray-100 relative">
-                              <img src={img.url} alt="Gallery" className="w-full h-full object-cover" />
-                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                 <button className="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm">
-                                    <Maximize size={24} />
-                                 </button>
-                              </div>
-                           </div>
-                           <div className="p-3">
-                              <p className="text-sm font-bold text-gray-800 truncate">{img.description || 'ไม่มีคำอธิบาย'}</p>
-                              <div className="flex justify-between items-center mt-2 text-[10px] text-gray-500">
-                                 <span className="flex items-center gap-1"><User size={10} /> {img.uploader || '-'}</span>
-                                 <span className="flex items-center gap-1"><Calendar size={10} /> {img.date}</span>
-                              </div>
-                           </div>
-                        </div>
-                     ))}
-                     <button 
-                       onClick={() => {
-                           setUploadType('gallery');
-                           setShowUploadModal(true);
-                       }}
-                       className="aspect-square bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-green-500 hover:text-green-600 hover:bg-green-50 transition-all"
-                     >
-                        <Plus size={32} />
-                        <span className="text-xs font-bold mt-2">เพิ่มรูปภาพ</span>
-                     </button>
-                  </div>
-               ) : (
+            <div className="animate-in fade-in duration-300 space-y-8">
+               {galleryList.length === 0 ? (
                   <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
                      <ImageIcon size={64} className="mx-auto text-gray-300 mb-4" />
                      <h3 className="text-gray-500 font-bold">ยังไม่มีรูปภาพในอัลบั้ม</h3>
@@ -487,6 +467,69 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
                         อัปโหลดรูปแรก
                      </button>
                   </div>
+               ) : (
+                  <>
+                    {groupedGallery.map(group => (
+                      <div key={group.key}>
+                        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-4 border-l-4 border-green-600 pl-3">
+                           {group.emoji} {group.label}
+                           <span className="ml-2 text-xs font-normal text-gray-400">({group.imgs.length})</span>
+                        </h3>
+                        {group.imgs.length > 0 ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {group.imgs.map(img => (
+                               <div 
+                                  key={img.id} 
+                                  className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-all cursor-pointer"
+                                  onClick={() => setViewImage(img)}
+                               >
+                                  <div className="aspect-square bg-gray-100 relative">
+                                     <img src={img.url} alt="Gallery" className="w-full h-full object-cover" />
+                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                        <button className="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm">
+                                           <Maximize size={24} />
+                                        </button>
+                                     </div>
+                                  </div>
+                                  <div className="p-3">
+                                     <p className="text-sm font-bold text-gray-800 truncate">{img.description || 'ไม่มีคำอธิบาย'}</p>
+                                     <div className="flex justify-between items-center mt-2 text-[10px] text-gray-500">
+                                        <span className="flex items-center gap-1"><User size={10} /> {img.uploader || '-'}</span>
+                                        <span className="flex items-center gap-1"><Calendar size={10} /> {img.date}</span>
+                                     </div>
+                                  </div>
+                               </div>
+                            ))}
+                            <button 
+                              onClick={() => {
+                                  setUploadType('gallery');
+                                  setUploadGalleryCategory(group.key);
+                                  setShowUploadModal(true);
+                              }}
+                              className="aspect-square bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-green-500 hover:text-green-600 hover:bg-green-50 transition-all"
+                            >
+                               <Plus size={32} />
+                               <span className="text-xs font-bold mt-2">เพิ่มรูปภาพ</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-gray-400 hover:border-green-400 hover:bg-green-50 transition-all">
+                             <button
+                               onClick={() => {
+                                   setUploadType('gallery');
+                                   setUploadGalleryCategory(group.key);
+                                   setShowUploadModal(true);
+                               }}
+                               className="flex flex-col items-center gap-2"
+                             >
+                               <Plus size={28} />
+                               <span className="text-xs font-bold">เพิ่ม{group.label}</span>
+                             </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </>
                )}
             </div>
          )}
@@ -523,6 +566,22 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
                        </optgroup>
                     </select>
                  </div>
+
+                  {uploadType === 'gallery' && (
+                  <div className="space-y-1">
+                     <label className="text-sm font-bold text-gray-700">หมวดหมู่อัลบั้ม</label>
+                     <select
+                       value={uploadGalleryCategory}
+                       onChange={(e) => setUploadGalleryCategory(e.target.value as GalleryCategory)}
+                       className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                     >
+                        <option value="tree">🌳 ภาพต้นไม้</option>
+                        <option value="soil">🪨 ภาพดิน</option>
+                        <option value="atmosphere">🌄 ภาพบรรยากาศ</option>
+                        <option value="other">📷 ภาพอื่น ๆ</option>
+                     </select>
+                  </div>
+                  )}
                  
                  <div className="space-y-1">
                     <label className="text-sm font-bold text-gray-700">เลือกไฟล์</label>
