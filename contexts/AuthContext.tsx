@@ -137,7 +137,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to clear user session', error);
     }
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch((err) => {
+      console.error('Server-side logout failed:', err);
+    });
   };
 
   return (
