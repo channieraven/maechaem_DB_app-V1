@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node proxy-server.cjs",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js",
+    "start": "node proxy-server.cjs",
     "test": "echo 'No tests configured yet – skipping.' && exit 0"
   },
   "dependencies": {
