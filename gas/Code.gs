@@ -441,7 +441,13 @@ function saveImageToSheet(data) {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_IMAGES);
-    sheet.appendRow(["id", "plot_code", "image_type", "url", "description", "uploader", "date", "timestamp"]);
+    sheet.appendRow(["id", "plot_code", "image_type", "gallery_category", "url", "description", "uploader", "date", "timestamp"]);
+  } else {
+    // Ensure gallery_category column exists for backward compatibility with existing sheets
+    const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (existingHeaders.indexOf("gallery_category") === -1) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue("gallery_category");
+    }
   }
 
   var timestamp = new Date();
@@ -452,7 +458,24 @@ function saveImageToSheet(data) {
     return responseJSON({ success: false, error: "No image URL provided" });
   }
 
-  sheet.appendRow([id, data.plot_code, data.image_type, imageUrl, data.description, data.uploader, data.date, timestamp]);
+  // Use header-based row building for robustness with any column order
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const newRow = headers.map(function(header) {
+    switch (header) {
+      case "id":               return id;
+      case "plot_code":        return data.plot_code || "";
+      case "image_type":       return data.image_type || "";
+      case "gallery_category": return data.gallery_category || "";
+      case "url":              return imageUrl;
+      case "description":      return data.description || "";
+      case "uploader":         return data.uploader || "";
+      case "date":             return data.date || "";
+      case "timestamp":        return timestamp;
+      default:                 return "";
+    }
+  });
+
+  sheet.appendRow(newRow);
 
   return responseJSON({ success: true, id: id, url: imageUrl });
 }

@@ -126,8 +126,9 @@ const App: React.FC = () => {
         // Map snake_case (Sheet) to camelCase (Frontend)
         const mappedImages: PlotImage[] = imgRes.data.map((item: any) => ({
           id: item.id ? item.id.toString() : Date.now().toString(),
-          plotCode: item.plot_code,  // Map plot_code -> plotCode
-          type: item.image_type,     // Map image_type -> type
+          plotCode: item.plot_code,          // Map plot_code -> plotCode
+          type: item.image_type,             // Map image_type -> type
+          galleryCategory: item.gallery_category || undefined,  // Map gallery_category -> galleryCategory
           url: item.url,
           description: item.description,
           uploader: item.uploader,
@@ -468,6 +469,7 @@ const App: React.FC = () => {
         action: 'uploadImage',
         plot_code: imgData.plotCode, 
         image_type: imgData.type,
+        gallery_category: imgData.galleryCategory || '',
         // Send the URL directly. You MUST update the Google Apps Script to handle this.
         image_base64: imgData.url, 
         description: imgData.description,

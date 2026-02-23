@@ -265,10 +265,15 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
   // Merge Saved + Local, applying optimistic delete/edit overrides
   const allImages = useMemo(() => {
     const seen = new Set<string>();
+    // Build sets from server images to deduplicate optimistic local images that are now persisted
+    const serverUrlSet = new Set(savedImages.map(img => img.url).filter(Boolean));
+    const serverIdSet = new Set(savedImages.map(img => img.id));
     return [...localImages, ...savedImages]
       .filter(img => {
         if (deletedImageIds.has(img.id)) return false;
         if (seen.has(img.id)) return false;
+        // Skip a local (optimistic) image once the server has synced the same URL
+        if (!serverIdSet.has(img.id) && serverUrlSet.has(img.url)) return false;
         seen.add(img.id);
         return true;
       })
