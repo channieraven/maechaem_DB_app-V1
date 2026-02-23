@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
     if (!user) throw new Error('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
     try {
-      const result = await gasPost({ action: 'updateProfile', email: user.email, ...data });
+      const result = await gasPost({ action: 'updateUser', email: user.email, ...data });
       if (!result.success) throw new Error(result.error || 'Failed to update profile');
       if (user) {
         const updated: User = {
@@ -107,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password: data.password,
         position: data.position,
         organization: data.organization,
+        role: 'pending',
       });
       setIsLoading(false);
       return result;
