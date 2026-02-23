@@ -24,56 +24,41 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_STORAGE_KEY = 'auth_user';
 
-// Allow the API to live on a different origin (e.g. Cloud Run) when the
-// frontend is served as a static site (e.g. GitHub Pages).
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+// Use GAS as the sole backend — no cookie/session, no /api/auth/* endpoints.
+const APPS_SCRIPT_URL =
+  (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.replace(/\/$/, '') ||
+  'https://script.google.com/macros/s/AKfycbzT0rZVvpzQ-WGp9XYvuxxYZvHXe-_Omcu5nvyYn6mpe8Fo6YLpIkktu5UqJXyR0MUX/exec';
+
+// Post a JSON payload to GAS using text/plain to avoid CORS preflight.
+async function gasPost(payload: object): Promise<any> {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json();
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Try the server session first, fall back to localStorage
-    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        if (data.user) {
-          setUser(data.user);
-          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-        } else {
-          const stored = localStorage.getItem(USER_STORAGE_KEY);
-          if (stored) setUser(JSON.parse(stored));
-        }
-      })
-      .catch(() => {
-        // Server not reachable (e.g. static deployment) — use localStorage
-        try {
-          const stored = localStorage.getItem(USER_STORAGE_KEY);
-          if (stored) setUser(JSON.parse(stored));
-        } catch (err) {
-          console.error('Failed to parse stored user data:', err);
-        }
-      })
-      .finally(() => setIsLoading(false));
+    // GAS has no server-side session — restore user from localStorage only.
+    try {
+      const stored = localStorage.getItem(USER_STORAGE_KEY);
+      if (stored) setUser(JSON.parse(stored));
+    } catch (err) {
+      console.error('Failed to parse stored user data:', err);
+    }
+    setIsLoading(false);
   }, []);
 
   const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
+    if (!user) throw new Error('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
     try {
-      const res = await fetch(`${API_BASE}/api/auth/profile`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-      let result: any;
-      try {
-        result = await res.json();
-      } catch {
-        throw new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
-      }
+      const result = await gasPost({ action: 'updateProfile', email: user.email, ...data });
       if (!result.success) throw new Error(result.error || 'Failed to update profile');
       if (user) {
         const updated: User = {
@@ -94,20 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-      let result: any;
-      try {
-        result = await res.json();
-      } catch {
-        setUser(null);
-        setIsLoading(false);
-        return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
-      }
+      const result = await gasPost({ action: 'login', email, password });
       if (result.success && result.user) {
         setUser(result.user);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user));
@@ -121,37 +93,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       setUser(null);
       setIsLoading(false);
-      return { success: false, message: error.message || 'เกิดข้อผิดพลาด' };
+      return { success: false, message: error.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
     }
   };
 
   const register = async (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          fullname: data.fullname,
-          email: data.email,
-          password: data.password,
-          position: data.position,
-          organization: data.organization,
-        }),
+      const result = await gasPost({
+        action: 'register',
+        fullname: data.fullname,
+        email: data.email,
+        password: data.password,
+        position: data.position,
+        organization: data.organization,
       });
-      let result: any;
-      try {
-        result = await res.json();
-      } catch {
-        setIsLoading(false);
-        return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
-      }
       setIsLoading(false);
       return result;
     } catch (error: any) {
       setIsLoading(false);
-      return { success: false, error: error.message || 'เกิดข้อผิดพลาด' };
+      return { success: false, error: error.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
     }
   };
 
@@ -162,9 +123,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to clear user session', error);
     }
-    fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' }).catch((err) => {
-      console.error('Server-side logout failed:', err);
-    });
   };
 
   return (
