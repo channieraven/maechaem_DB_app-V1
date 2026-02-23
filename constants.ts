@@ -1,7 +1,7 @@
 
 import { SpeciesInfo, PlotImage } from './types';
 
-export const APPSCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbwzkhcy_M-cTufs7zVQeZxL0nSNB6BN2UXtD9Qo0D8kd0zExUIGMdzTxk76Blc27Id9/exec';
+export const APPSCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzhbYb_wZh9JHAH-C49HSvmpPwts95iLhu0SJlvzCepAAkPHwm-lC_DEQ-T1lgQ3Psa/exec';
 
 export const SPECIES_LIST: SpeciesInfo[] = [
   // Group A - Forest Trees
