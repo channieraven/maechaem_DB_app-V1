@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Download, Upload, Image as ImageIcon, Map as MapIcon, User, Calendar, Plus, X, Loader2, Maximize, ZoomIn, ZoomOut, RotateCcw, CloudLightning } from 'lucide-react';
+import { Download, Upload, Image as ImageIcon, Map as MapIcon, User, Calendar, Plus, X, Loader2, Maximize, ZoomIn, ZoomOut, RotateCcw, CloudLightning, Pencil, Trash2 } from 'lucide-react';
 import { PLOT_LIST, PLOT_PLAN_DATA } from '../constants';
 import { PlotImage, GalleryCategory } from '../types';
 import { uploadToCloudinary } from '../services/cloudinaryService';
@@ -9,6 +9,8 @@ import { useAuth } from '../contexts/AuthContext';
 interface PlotInfoViewProps {
   savedImages: PlotImage[];
   onUploadImage: (img: PlotImage) => void;
+  onDeleteImage?: (id: string) => void;
+  onUpdateImageDescription?: (id: string, description: string) => void;
   onNavigateToMap: (plotCode: string) => void;
 }
 
@@ -226,12 +228,20 @@ const GALLERY_GROUPS: { key: GalleryCategory; label: string; emoji: string }[] =
   { key: 'other',      label: 'ภาพอื่น ๆ',   emoji: '📷' },
 ];
 
-const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage, onNavigateToMap }) => {
+const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage, onDeleteImage, onUpdateImageDescription, onNavigateToMap }) => {
   const { user } = useAuth();
   const [selectedPlot, setSelectedPlot] = useState(PLOT_LIST[0].code);
   const [activeTab, setActiveTab] = useState<'plans' | 'gallery'>('plans');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewImage, setViewImage] = useState<PlotImage | null>(null);
+  
+  // Edit description state
+  const [editDescImage, setEditDescImage] = useState<PlotImage | null>(null);
+  const [editDescText, setEditDescText] = useState('');
+
+  // Optimistic overrides for delete and description edits
+  const [deletedImageIds, setDeletedImageIds] = useState<Set<string>>(new Set());
+  const [editedDescriptions, setEditedDescriptions] = useState<Map<string, string>>(new Map());
   
   // Upload State
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -252,10 +262,18 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
   // Optimistic UI State
   const [localImages, setLocalImages] = useState<PlotImage[]>([]);
 
-  // Merge Saved + Local
+  // Merge Saved + Local, applying optimistic delete/edit overrides
   const allImages = useMemo(() => {
-     return [...localImages, ...savedImages];
-  }, [savedImages, localImages]);
+    const seen = new Set<string>();
+    return [...localImages, ...savedImages]
+      .filter(img => {
+        if (deletedImageIds.has(img.id)) return false;
+        if (seen.has(img.id)) return false;
+        seen.add(img.id);
+        return true;
+      })
+      .map(img => editedDescriptions.has(img.id) ? { ...img, description: editedDescriptions.get(img.id) ?? img.description } : img);
+  }, [savedImages, localImages, deletedImageIds, editedDescriptions]);
 
   const planImages = useMemo(() => {
     // Priority: Dynamic (Latest first) > Static
@@ -323,6 +341,19 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
     } finally {
         setIsUploading(false);
     }
+  };
+
+  const handleDeleteImage = (img: PlotImage) => {
+    if (!window.confirm(`ต้องการลบรูปภาพนี้หรือไม่?\n"${(img.description || 'ไม่มีคำอธิบาย').slice(0, 80)}"`)) return;
+    setDeletedImageIds(prev => new Set([...prev, img.id]));
+    onDeleteImage?.(img.id);
+  };
+
+  const handleConfirmEditDesc = () => {
+    if (!editDescImage) return;
+    setEditedDescriptions(prev => new Map(prev).set(editDescImage.id, editDescText));
+    onUpdateImageDescription?.(editDescImage.id, editDescText);
+    setEditDescImage(null);
   };
 
   return (
@@ -486,8 +517,22 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
                                   <div className="aspect-square bg-gray-100 relative">
                                      <img src={img.url} alt="Gallery" className="w-full h-full object-cover" />
                                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                        <button className="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm">
-                                           <Maximize size={24} />
+                                        <button className="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm" title="ดูภาพเต็ม">
+                                           <Maximize size={20} />
+                                        </button>
+                                        <button
+                                           className="p-2 bg-white/20 rounded-full text-white hover:bg-yellow-400/60 backdrop-blur-sm"
+                                           title="แก้ไขคำอธิบาย"
+                                           onClick={(e) => { e.stopPropagation(); setEditDescImage(img); setEditDescText(img.description || ''); }}
+                                        >
+                                           <Pencil size={18} />
+                                        </button>
+                                        <button
+                                           className="p-2 bg-white/20 rounded-full text-white hover:bg-red-500/60 backdrop-blur-sm"
+                                           title="ลบรูปภาพ"
+                                           onClick={(e) => { e.stopPropagation(); handleDeleteImage(img); }}
+                                        >
+                                           <Trash2 size={18} />
                                         </button>
                                      </div>
                                   </div>
@@ -534,6 +579,43 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
             </div>
          )}
       </div>
+
+      {/* Edit Description Modal */}
+      {editDescImage && (
+        <div className="fixed inset-0 z-[5000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                 <h3 className="font-bold text-gray-800 flex items-center gap-2"><Pencil size={16} /> แก้ไขคำอธิบายภาพ</h3>
+                 <button onClick={() => setEditDescImage(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                 <img src={editDescImage.url} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
+                 <div className="space-y-1">
+                    <label className="text-sm font-bold text-gray-700">คำอธิบายภาพ</label>
+                    <input
+                       type="text"
+                       value={editDescText}
+                       onChange={(e) => setEditDescText(e.target.value)}
+                       onKeyDown={(e) => e.key === 'Enter' && handleConfirmEditDesc()}
+                       className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                       placeholder="ใส่คำอธิบายภาพ"
+                       autoFocus
+                    />
+                 </div>
+                 <div className="flex gap-3">
+                    <button
+                       onClick={() => setEditDescImage(null)}
+                       className="flex-1 border border-gray-300 text-gray-700 font-bold py-2.5 rounded-xl hover:bg-gray-50 transition-all"
+                    >ยกเลิก</button>
+                    <button
+                       onClick={handleConfirmEditDesc}
+                       className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl shadow-md transition-all"
+                    >บันทึก</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       {showUploadModal && (

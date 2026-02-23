@@ -60,6 +60,12 @@ function doPost(e) {
       case "uploadImage":
         return saveImageToSheet(payload);
 
+      case "updateImage":
+        return updateImageInSheet(payload);
+
+      case "deleteImage":
+        return deleteRow({ sheet: SHEET_IMAGES, key_col: "id", key_val: payload.id, delete_all: false });
+
       case "addSpacingLog":
         return addSpacingLog(payload);
 
@@ -449,6 +455,29 @@ function saveImageToSheet(data) {
   sheet.appendRow([id, data.plot_code, data.image_type, imageUrl, data.description, data.uploader, data.date, timestamp]);
 
   return responseJSON({ success: true, id: id, url: imageUrl });
+}
+
+// --- Update Image Description ---
+function updateImageInSheet(data) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_IMAGES);
+  if (!sheet) return responseJSON({ success: false, error: "Sheet not found" });
+
+  var headerRow    = sheet.getDataRange().getValues()[0];
+  var idColIndex   = headerRow.indexOf("id");
+  var descColIndex = headerRow.indexOf("description");
+
+  if (idColIndex === -1 || descColIndex === -1)
+    return responseJSON({ success: false, error: "Column not found" });
+
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][idColIndex] === data.id) {
+      sheet.getRange(i + 1, descColIndex + 1).setValue(data.description);
+      return responseJSON({ success: true });
+    }
+  }
+  return responseJSON({ success: false, error: "Image not found" });
 }
 
 // --- Spacing Log ---
