@@ -262,6 +262,54 @@ const App: React.FC = () => {
     setDeleteType('growth');
   };
 
+  const handleCleanDuplicates = async () => {
+    // Group records by tree_code + survey_date; keep the one with the highest log_id per group
+    const groups: Map<string, TreeRecord[]> = new Map();
+    for (const r of records) {
+      const key = `${r.tree_code}__${r.survey_date}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    }
+
+    const toDelete: TreeRecord[] = [];
+    groups.forEach((groupRecords) => {
+      if (groupRecords.length <= 1) return;
+      // Sort by numeric id descending to keep the latest
+      const sorted = [...groupRecords].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+      // Keep the first (latest), mark the rest for deletion
+      toDelete.push(...sorted.slice(1));
+    });
+
+    if (toDelete.length === 0) {
+      showToast('ไม่พบข้อมูลซ้ำในระบบ', 'info');
+      return;
+    }
+
+    if (!window.confirm(`พบข้อมูลซ้ำ ${toDelete.length} รายการ\nต้องการลบออกหรือไม่?`)) return;
+
+    setIsLoading(true);
+    setLoadingMessage(`กำลังล้างข้อมูลซ้ำ...`);
+    let successCount = 0;
+    let errorCount = 0;
+    try {
+      for (let i = 0; i < toDelete.length; i++) {
+        const r = toDelete[i];
+        setLoadingMessage(`กำลังล้างข้อมูลซ้ำ (${i + 1}/${toDelete.length})...`);
+        if (!r.log_id) { errorCount++; continue; }
+        const res = await apiPost({ action: 'deleteRow', sheet: 'growth_logs', key_col: 'log_id', key_val: r.log_id, delete_all: false });
+        if (res.success) successCount++;
+        else errorCount++;
+      }
+      showToast(`ล้างข้อมูลซ้ำเรียบร้อย ${successCount} รายการ${errorCount > 0 ? ` (ผิดพลาด ${errorCount})` : ''}`, errorCount > 0 ? 'info' : 'success');
+      fetchData();
+    } catch (err: any) {
+      showToast('เกิดข้อผิดพลาดในการล้างข้อมูลซ้ำ', 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
   const handleDeleteCoordRequest = (record: CoordRecord) => {
     setDeleteTarget({ tree_code: record.tree_code });
     setDeleteType('coord');
@@ -752,6 +800,7 @@ const App: React.FC = () => {
               onDelete={handleDeleteRequest}
               onOpenMobileForm={() => { clearForm(); setShowMobileForm(true); }}
               onClearForm={clearForm}
+              onCleanDuplicates={handleCleanDuplicates}
             />
           )}
           
