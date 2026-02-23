@@ -35,7 +35,7 @@ const verifyPassword = (password, stored) => {
 
 // --- Google Apps Script (Sheets) Helpers ---
 const APPSCRIPT_URL = process.env.VITE_APPS_SCRIPT_URL ||
-  'https://script.google.com/macros/s/AKfycbzZ0SkJ3W3tNyBCjIprVWSCkGfmAyrVoEoBM7G7HWruOLu0phcNY7uYw5MZM-yd33R3/exec';
+  'https://script.google.com/macros/s/AKfycbzT0rZVvpzQ-WGp9XYvuxxYZvHXe-_Omcu5nvyYn6mpe8Fo6YLpIkktu5UqJXyR0MUX/exec';
 
 /** Fetch all rows from the given sheet via GAS */
 const gasGetSheet = async (sheet) => {
