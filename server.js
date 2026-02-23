@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
@@ -67,6 +68,17 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.set('trust proxy', true);
+
+// Allow cross-origin requests when the frontend is hosted separately
+// (e.g. GitHub Pages). Set CORS_ORIGIN to the frontend URL in production.
+const corsOrigin = process.env.CORS_ORIGIN;
+if (corsOrigin) {
+  app.use(cors({
+    origin: corsOrigin.split(',').map(o => o.trim()),
+    credentials: true,
+  }));
+}
+
 app.use(express.json());
 app.use(cookieParser());
 
