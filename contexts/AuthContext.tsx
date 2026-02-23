@@ -24,14 +24,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_STORAGE_KEY = 'auth_user';
 
+// Allow the API to live on a different origin (e.g. Cloud Run) when the
+// frontend is served as a static site (e.g. GitHub Pages).
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Try the server session first, fall back to localStorage
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then(res => res.json())
+    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.user) {
           setUser(data.user);
@@ -55,13 +62,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateProfile = async (data: { fullName: string; position: string; affiliation: string }) => {
     try {
-      const res = await fetch('/api/auth/profile', {
+      const res = await fetch(`${API_BASE}/api/auth/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
-      const result = await res.json();
+      let result: any;
+      try {
+        result = await res.json();
+      } catch {
+        throw new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      }
       if (!result.success) throw new Error(result.error || 'Failed to update profile');
       if (user) {
         const updated: User = {
@@ -82,13 +94,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
-      const result = await res.json();
+      let result: any;
+      try {
+        result = await res.json();
+      } catch {
+        setUser(null);
+        setIsLoading(false);
+        return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
+      }
       if (result.success && result.user) {
         setUser(result.user);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user));
@@ -109,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (data: { fullname: string; email: string; password: string; confirm_password: string; position: string; organization: string }) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -121,7 +140,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           organization: data.organization,
         }),
       });
-      const result = await res.json();
+      let result: any;
+      try {
+        result = await res.json();
+      } catch {
+        setIsLoading(false);
+        return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' };
+      }
       setIsLoading(false);
       return result;
     } catch (error: any) {
@@ -137,7 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to clear user session', error);
     }
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch((err) => {
+    fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' }).catch((err) => {
       console.error('Server-side logout failed:', err);
     });
   };
