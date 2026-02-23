@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf } from 'lucide-react';
+import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser } from 'lucide-react';
 import { PLOT_LIST } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
 import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
@@ -19,6 +19,7 @@ interface TableViewProps {
   onDelete: (r: TreeRecord) => void;
   onOpenMobileForm: () => void;
   onClearForm: () => void;
+  onCleanDuplicates: () => void;
 }
 
 const CATEGORIES: PlantCategory[] = ['ไม้ป่า', 'ยางพารา', 'ผลผลิตไผ่', 'ไม้ผล', 'กล้วย'];
@@ -36,7 +37,8 @@ const TableView: React.FC<TableViewProps> = ({
   onEdit,
   onDelete,
   onOpenMobileForm,
-  onClearForm
+  onClearForm,
+  onCleanDuplicates
 }) => {
   const [activeCategory, setActiveCategory] = useState<PlantCategory>('ไม้ป่า');
 
@@ -101,6 +103,14 @@ const TableView: React.FC<TableViewProps> = ({
             <option value="alive">รอด</option>
             <option value="dead">ตาย</option>
           </select>
+          <button
+            onClick={onCleanDuplicates}
+            className="flex items-center gap-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 font-semibold rounded-lg px-3 py-2 text-sm transition-colors whitespace-nowrap"
+            title="ล้างข้อมูลซ้ำ"
+          >
+            <Eraser size={15} />
+            ล้างข้อมูลซ้ำ
+          </button>
         </div>
       </div>
 
