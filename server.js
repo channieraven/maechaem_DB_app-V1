@@ -3,40 +3,64 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
+import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- Database Setup (Simple JSON file) ---
-const DB_FILE = path.join(__dirname, 'users.json');
+// --- Password Helpers ---
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+};
 
-// Helper to read/write DB
-const getUsers = () => {
-  if (!fs.existsSync(DB_FILE)) return [];
+const verifyPassword = (password, stored) => {
+  const colonIndex = stored.indexOf(':');
+  if (colonIndex === -1) return false;
+  const salt = stored.slice(0, colonIndex);
+  const hash = stored.slice(colonIndex + 1);
+  if (!salt || !hash) return false;
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-  } catch (e) {
-    return [];
+    const verifyHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(verifyHash, 'hex'));
+  } catch {
+    return false;
   }
 };
 
-const saveUser = (user) => {
-  const users = getUsers();
-  const existingIndex = users.findIndex(u => u.email === user.email);
-  if (existingIndex >= 0) {
-    users[existingIndex] = { ...users[existingIndex], ...user };
-  } else {
-    users.push(user);
-  }
-  fs.writeFileSync(DB_FILE, JSON.stringify(users, null, 2));
-  return user;
+// --- Google Apps Script (Sheets) Helpers ---
+const APPSCRIPT_URL = process.env.VITE_APPS_SCRIPT_URL ||
+  'https://script.google.com/macros/s/AKfycbzZ0SkJ3W3tNyBCjIprVWSCkGfmAyrVoEoBM7G7HWruOLu0phcNY7uYw5MZM-yd33R3/exec';
+
+/** Fetch all rows from the given sheet via GAS */
+const gasGetSheet = async (sheet) => {
+  const res = await fetch(`${APPSCRIPT_URL}?sheet=${encodeURIComponent(sheet)}`);
+  if (!res.ok) throw new Error(`GAS GET error: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data.data ?? []);
 };
 
-const findUser = (email) => getUsers().find(u => u.email === email);
+/** POST an action payload to GAS */
+const gasPost = async (payload) => {
+  const res = await fetch(APPSCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`GAS POST error: ${res.status}`);
+  return res.json();
+};
+
+/** Find a single user by email from the users sheet */
+const gasFindUser = async (email) => {
+  const users = await gasGetSheet('users');
+  return users.find(u => u.email === email) ?? null;
+};
 
 // --- App Setup ---
 const app = express();
@@ -55,10 +79,14 @@ if (!SESSION_SECRET) {
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: IS_PRODUCTION,       // false on localhost (http), true on production (https)
+  secure: IS_PRODUCTION,
   sameSite: IS_PRODUCTION ? 'none' : 'lax',
   maxAge: 730 * 24 * 60 * 60 * 1000
 };
+
+// --- Rate Limiters ---
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+const apiLimiter  = rateLimit({ windowMs:  1 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
 
 // --- Auth Routes ---
 
@@ -71,38 +99,122 @@ const isAdminEmail = (email) => {
   return list.includes(email.toLowerCase());
 };
 
-// 1. Get Current User
-app.get('/api/auth/me', (req, res) => {
+// 1. Register (rate-limited: 10 attempts per 15 min per IP)
+app.post('/api/auth/register', authLimiter, async (req, res) => {
+  const { fullname, email, password, position, organization } = req.body;
+
+  if (!fullname || !email || !password || !position || !organization) {
+    return res.status(400).json({ success: false, error: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+  }
+
+  try {
+    const existing = await gasFindUser(email);
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'อีเมลนี้ถูกใช้งานแล้ว' });
+    }
+
+    const result = await gasPost({
+      action: 'register',
+      email,
+      fullname,
+      password_hash: hashPassword(password),
+      position,
+      organization,
+      role: isAdminEmail(email) ? 'admin' : 'pending',
+    });
+
+    if (result && result.success === false) {
+      return res.status(400).json({ success: false, error: result.error || 'สมัครสมาชิกไม่สำเร็จ' });
+    }
+
+    res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ' });
+  } catch (e) {
+    console.error('Register error:', e);
+    res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' });
+  }
+});
+
+// 2. Login (rate-limited: 10 attempts per 15 min per IP)
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
+  }
+
+  try {
+    const user = await gasFindUser(email);
+    // password_hash is the field written during registration; password is kept as fallback
+    // for any rows that may have been stored with a legacy field name
+    const storedHash = user?.password_hash || user?.password;
+    if (!user || !storedHash || !verifyPassword(password, storedHash)) {
+      return res.status(401).json({ success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+    }
+
+    // Auto-promote to admin if configured
+    if (isAdminEmail(email) && user.role !== 'admin') {
+      user.role = 'admin';
+      await gasPost({ action: 'updateUserRole', username: email, role: 'admin' }).catch(console.error);
+    }
+
+    const token = jwt.sign(
+      {
+        email: user.email,
+        role: user.role,
+        name: user.name || user.fullname,
+        picture: user.picture || '',
+        fullName: user.fullName || user.fullname || '',
+        position: user.position || '',
+        affiliation: user.affiliation || user.organization || '',
+      },
+      SESSION_SECRET,
+      { expiresIn: '730d' }
+    );
+
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+
+    const { password: _p, password_hash: _ph, ...userWithoutPassword } = user;
+    res.json({ success: true, user: userWithoutPassword });
+  } catch (e) {
+    console.error('Login error:', e);
+    res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' });
+  }
+});
+
+// 3. Get Current User
+app.get('/api/auth/me', apiLimiter, async (req, res) => {
   const token = req.cookies.auth_token;
   if (!token) return res.json({ user: null });
 
   try {
     const decoded = jwt.verify(token, SESSION_SECRET);
-    // Refresh user data from DB to get latest role
-    let user = findUser(decoded.email);
-    
-    if (!user) {
-      // If user is missing from DB (e.g. server restart), restore from token
-      console.log(`Restoring user ${decoded.email} from token after server restart`);
-      user = {
+
+    try {
+      const user = await gasFindUser(decoded.email);
+      if (user) {
+        if (isAdminEmail(user.email) && user.role !== 'admin') {
+          user.role = 'admin';
+          await gasPost({ action: 'updateUserRole', username: user.email, role: 'admin' }).catch(console.error);
+        }
+        const { password: _p, password_hash: _ph, ...userWithoutPassword } = user;
+        return res.json({ user: userWithoutPassword });
+      }
+    } catch (gasError) {
+      console.warn('GAS unavailable for /api/auth/me, using JWT data:', gasError.message);
+    }
+
+    // Fall back to JWT payload when GAS is unreachable
+    res.json({
+      user: {
         email: decoded.email,
-        role: (decoded.role === 'admin' || isAdminEmail(decoded.email)) ? 'admin' : (decoded.role || 'pending'),
+        role: isAdminEmail(decoded.email) ? 'admin' : (decoded.role || 'pending'),
         name: decoded.name,
         picture: decoded.picture,
         fullName: decoded.fullName || '',
         position: decoded.position || '',
         affiliation: decoded.affiliation || '',
-        createdAt: new Date().toISOString(), // Approximate
-        lastLogin: new Date().toISOString()
-      };
-      saveUser(user);
-    } else if (isAdminEmail(user.email) && user.role !== 'admin') {
-      // Promote to admin if ADMIN_EMAIL is set and role hasn't been updated yet
-      user = { ...user, role: 'admin' };
-      saveUser(user);
-    }
-
-    res.json({ user });
+      }
+    });
   } catch (e) {
     console.error('Token verification failed:', e.message);
     res.clearCookie('auth_token');
@@ -116,114 +228,96 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// 4.5 Update Profile
-app.put('/api/auth/profile', (req, res) => {
+// 5. Update Profile
+app.put('/api/auth/profile', apiLimiter, async (req, res) => {
   const token = req.cookies.auth_token;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decoded = jwt.verify(token, SESSION_SECRET);
     const { fullName, position, affiliation } = req.body;
-    
-    const users = getUsers();
-    const userIndex = users.findIndex(u => u.email === decoded.email);
-    
-    if (userIndex === -1) {
-      return res.status(404).json({ error: 'User not found' });
-    }
 
-    // Update fields
-    users[userIndex] = {
-      ...users[userIndex],
-      fullName: fullName || users[userIndex].fullName,
-      position: position || users[userIndex].position,
-      affiliation: affiliation || users[userIndex].affiliation
-    };
-    
-    fs.writeFileSync(DB_FILE, JSON.stringify(users, null, 2));
+    await gasPost({
+      action: 'updateUser',
+      username: decoded.email,
+      fullName: fullName || decoded.fullName || '',
+      position: position || decoded.position || '',
+      affiliation: affiliation || decoded.affiliation || '',
+    });
 
-    // Update Token with new info
-    const updatedUser = users[userIndex];
+    // Reissue JWT with updated profile fields
     const newToken = jwt.sign(
-      { 
-        email: updatedUser.email, 
-        role: updatedUser.role, 
-        name: updatedUser.name, 
-        picture: updatedUser.picture,
-        fullName: updatedUser.fullName,
-        position: updatedUser.position,
-        affiliation: updatedUser.affiliation
+      {
+        email: decoded.email,
+        role: decoded.role,
+        name: decoded.name,
+        picture: decoded.picture,
+        fullName: fullName || decoded.fullName || '',
+        position: position || decoded.position || '',
+        affiliation: affiliation || decoded.affiliation || '',
       },
       SESSION_SECRET,
       { expiresIn: '730d' }
     );
 
     res.cookie('auth_token', newToken, COOKIE_OPTIONS);
-
-    res.json({ success: true, user: updatedUser });
+    res.json({ success: true });
   } catch (e) {
+    console.error('Profile update error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// 5. Admin: Get All Users
-app.get('/api/admin/users', (req, res) => {
+// 6. Admin: Get All Users
+app.get('/api/admin/users', apiLimiter, async (req, res) => {
   const token = req.cookies.auth_token;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decoded = jwt.verify(token, SESSION_SECRET);
-    const currentUser = findUser(decoded.email);
-    
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const users = getUsers();
-    // Return users without sensitive info if any (currently none, but good practice)
-    res.json({ users });
+    const users = await gasGetSheet('users');
+    const sanitized = users.map(({ password: _p, password_hash: _ph, ...u }) => u);
+    res.json({ users: sanitized });
   } catch (e) {
-    res.status(401).json({ error: 'Invalid token' });
+    console.error('Get users error:', e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// 6. Admin: Update User Role
-app.put('/api/admin/users/:email/role', (req, res) => {
+// 7. Admin: Update User Role
+app.put('/api/admin/users/:email/role', apiLimiter, async (req, res) => {
   const token = req.cookies.auth_token;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decoded = jwt.verify(token, SESSION_SECRET);
-    const currentUser = findUser(decoded.email);
-    
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     const { email } = req.params;
     const { role } = req.body;
 
-    if (!['pending', 'researcher', 'admin'].includes(role)) {
+    if (!['pending', 'researcher', 'admin', 'staff', 'executive', 'external'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    // Prevent admin from demoting themselves
     if (email === decoded.email && role !== 'admin') {
       return res.status(400).json({ error: 'Admins cannot demote themselves' });
     }
 
-    const users = getUsers();
-    const userIndex = users.findIndex(u => u.email === email);
-    
-    if (userIndex === -1) {
-      return res.status(404).json({ error: 'User not found' });
+    const result = await gasPost({ action: 'updateUserRole', username: email, role });
+    if (result && result.success === false) {
+      return res.status(400).json({ error: result.error || 'Failed to update role' });
     }
 
-    users[userIndex].role = role;
-    fs.writeFileSync(DB_FILE, JSON.stringify(users, null, 2));
-
-    res.json({ success: true, user: users[userIndex] });
+    res.json({ success: true });
   } catch (e) {
+    console.error('Update role error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

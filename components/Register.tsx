@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { apiPost } from '../services/sheetsService';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Register: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+  const { register } = useAuth();
   const [form, setForm] = useState({
     fullname: '',
     email: '',
@@ -32,16 +33,9 @@ export const Register: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     }
     setIsLoading(true);
     try {
-      const data = await apiPost({
-        action: 'register',
-        email: form.email,
-        password: form.password,
-        fullname: form.fullname,
-        position: form.position,
-        organization: form.organization
-      });
+      const data = await register(form);
       if (data.success) {
-        setSuccess('สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ');
+        setSuccess(data.message || 'สมัครสมาชิกสำเร็จ กรุณารอการอนุมัติ');
         setForm({ fullname: '', email: '', password: '', confirm_password: '', position: '', organization: '' });
       } else {
         setError(data.error || data.message || 'สมัครสมาชิกไม่สำเร็จ');
