@@ -263,6 +263,61 @@ const App: React.FC = () => {
     setDeleteType('growth');
   };
 
+  const handleBulkSubmitGrowthLogs = async (data: Array<{
+    tree_code: string; plot_code: string; species_code: string; species_name: string;
+    species_group: string; tree_number: string; row_main: string; row_sub: string;
+    tag_label: string; status: string; height_m: string; dbh_cm: string;
+    bamboo_culms: string; note: string; survey_date: string; recorder: string;
+  }>) => {
+    setIsLoading(true);
+    let successCount = 0;
+    let errorCount = 0;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      setLoadingMessage(`กำลังบันทึกข้อมูลต้นไม้ (${i + 1}/${data.length})...`);
+      try {
+        const res = await apiPost({
+          action: 'addGrowthLog',
+          tree_code: item.tree_code,
+          tag_label: item.tag_label,
+          plot_code: item.plot_code,
+          species_code: item.species_code,
+          species_group: item.species_group,
+          species_name: item.species_name,
+          tree_number: item.tree_number ? (isNaN(parseInt(item.tree_number, 10)) ? null : parseInt(item.tree_number, 10)) : null,
+          row_main: item.row_main,
+          row_sub: item.row_sub,
+          status: item.status || null,
+          flowering: null,
+          note: item.note,
+          recorder: item.recorder,
+          survey_date: item.survey_date,
+          height_m: item.height_m || null,
+          dbh_cm: item.dbh_cm || null,
+          bamboo_culms: item.bamboo_culms || null,
+          dbh_1_cm: null,
+          dbh_2_cm: null,
+          dbh_3_cm: null,
+          banana_total: null,
+          banana_1yr: null,
+          yield_bunches: null,
+          yield_hands: null,
+          price_per_hand: null,
+        });
+        if (res.success) successCount++;
+        else errorCount++;
+      } catch {
+        errorCount++;
+      }
+    }
+    let msg = `บันทึกข้อมูลต้นไม้สำเร็จ ${successCount} รายการ`;
+    if (errorCount > 0) msg += `, ผิดพลาด ${errorCount} รายการ`;
+    showToast(msg, errorCount > 0 ? 'info' : 'success');
+    fetchData();
+    setIsLoading(false);
+    setLoadingMessage('');
+  };
+
   const handleCleanDuplicates = async () => {
     // Group records by tree_code + survey_date; keep the one with the highest log_id per group
     const groups: Map<string, TreeRecord[]> = new Map();
@@ -841,6 +896,7 @@ const App: React.FC = () => {
               onOpenMobileForm={() => { clearForm(); setShowMobileForm(true); }}
               onClearForm={clearForm}
               onCleanDuplicates={handleCleanDuplicates}
+              onBulkSubmitGrowthLogs={handleBulkSubmitGrowthLogs}
             />
           )}
           
