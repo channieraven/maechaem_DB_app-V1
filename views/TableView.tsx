@@ -1,9 +1,10 @@
 
-import React, { useMemo, useState } from 'react';
-import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser } from 'lucide-react';
-import { PLOT_LIST } from '../constants';
+import React, { useMemo, useState, useRef } from 'react';
+import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save } from 'lucide-react';
+import { PLOT_LIST, SPECIES_LIST } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
 import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
+import { GoogleGenAI } from '@google/genai';
 
 interface TableViewProps {
   records: TreeRecord[];
@@ -20,6 +21,31 @@ interface TableViewProps {
   onOpenMobileForm: () => void;
   onClearForm: () => void;
   onCleanDuplicates: () => void;
+  onBulkSubmitGrowthLogs?: (data: Array<{
+    tree_code: string; plot_code: string; species_code: string; species_name: string;
+    species_group: string; tree_number: string; row_main: string; row_sub: string;
+    tag_label: string; status: string; height_m: string; dbh_cm: string;
+    bamboo_culms: string; note: string; survey_date: string; recorder: string;
+  }>) => Promise<void>;
+}
+
+interface PendingGrowthRecord {
+  id: string;
+  tree_code: string;
+  plot_code: string;
+  species_code: string;
+  species_name: string;
+  tree_number: string;
+  row_main: string;
+  row_sub: string;
+  status: string;
+  height_m: string;
+  dbh_cm: string;
+  bamboo_culms: string;
+  note: string;
+  survey_date: string;
+  recorder: string;
+  verified: boolean;
 }
 
 const CATEGORIES: PlantCategory[] = ['ไม้ป่า', 'ยางพารา', 'ผลผลิตไผ่', 'ไม้ผล', 'กล้วย'];
@@ -38,9 +64,16 @@ const TableView: React.FC<TableViewProps> = ({
   onDelete,
   onOpenMobileForm,
   onClearForm,
-  onCleanDuplicates
+  onCleanDuplicates,
+  onBulkSubmitGrowthLogs
 }) => {
   const [activeCategory, setActiveCategory] = useState<PlantCategory>('ไม้ป่า');
+
+  // Import State
+  const [importMode, setImportMode] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [pendingData, setPendingData] = useState<PendingGrowthRecord[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredRecords = useMemo(() => {
     const result = records.filter(r => {
@@ -70,6 +103,358 @@ const TableView: React.FC<TableViewProps> = ({
       return numA - numB;
     });
   }, [records, searchTerm, plotFilter, statusFilter, activeCategory]);
+
+  // --- IMPORT HANDLERS ---
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsAnalyzing(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+          const result = reader.result?.toString().split(',')[1];
+          if (result) resolve(result);
+          else reject(new Error('Failed to read file as base64'));
+        };
+        reader.onerror = (err) => reject(err);
+      });
+
+      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      if (!apiKey) throw new Error('VITE_GEMINI_API_KEY is not set in environment variables');
+
+      const genAI = new GoogleGenAI({ apiKey });
+
+      const speciesListHint = SPECIES_LIST.map(s => `${s.code}=${s.name}`).join(', ');
+      const plotListHint = PLOT_LIST.map(p => p.code).join(', ');
+
+      const prompt = `
+        Analyze this image/document. It contains a table of tree survey data.
+        Extract each row into a JSON array of objects.
+
+        Target Columns (map to these keys):
+        - 'เลขรหัสต้นไม้' or tree code -> "tree_code"
+        - 'รหัสแปลง' or plot code -> "plot_code" (values like: ${plotListHint})
+        - 'ชนิดพันธุ์' or species name -> "species_name"
+        - 'รหัสชนิดพันธุ์' or species code -> "species_code" (values like: ${speciesListHint})
+        - 'ต้นที่' or tree number -> "tree_number" (string)
+        - 'แถวหลัก' or main row -> "row_main" (string)
+        - 'แถวย่อย' or sub row -> "row_sub" (string)
+        - 'สถานะ' or status -> "status" ("alive", "dead", or "")
+        - 'ความสูง' or height (m) -> "height_m" (string, digits only)
+        - 'RCD' or 'DBH' or diameter -> "dbh_cm" (string, digits only)
+        - 'จำนวนลำ' or bamboo culms -> "bamboo_culms" (string)
+        - 'หมายเหตุ' or note -> "note" (string)
+        - 'วันที่' or survey date -> "survey_date" (YYYY-MM-DD format)
+        - 'ผู้บันทึก' or recorder -> "recorder" (string)
+
+        Rules:
+        - Ignore rows where both 'tree_code' and 'tree_number' are empty.
+        - All numeric values should be plain strings (digits/decimals only, no units).
+        - Return ONLY the JSON array. No markdown, no explanation.
+      `;
+
+      const result = await genAI.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: file.type, data: base64Data } }
+            ]
+          }
+        ]
+      });
+
+      const responseText = result.text;
+      if (!responseText) throw new Error('Gemini returned an empty response');
+      console.log('Gemini Growth Log Response:', responseText);
+
+      let jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const arrayStart = jsonString.indexOf('[');
+      const arrayEnd = jsonString.lastIndexOf(']');
+      if (arrayStart !== -1 && arrayEnd !== -1) {
+        jsonString = jsonString.substring(arrayStart, arrayEnd + 1);
+      }
+      const data = JSON.parse(jsonString);
+
+      const today = new Date().toISOString().split('T')[0];
+      const newPending: PendingGrowthRecord[] = data.map((item: any, index: number) => {
+        // Try to find species_code from species_name if not provided
+        let speciesCode = item.species_code || '';
+        if (!speciesCode && item.species_name) {
+          const found = SPECIES_LIST.find(s =>
+            s.name.toLowerCase() === item.species_name.toLowerCase() ||
+            item.species_name.toLowerCase().includes(s.name.toLowerCase())
+          );
+          if (found) speciesCode = found.code;
+        }
+        return {
+          id: `${Date.now()}-${index}`,
+          tree_code: item.tree_code || '',
+          plot_code: item.plot_code || '',
+          species_code: speciesCode,
+          species_name: item.species_name || (SPECIES_LIST.find(s => s.code === speciesCode)?.name || ''),
+          tree_number: item.tree_number ? String(item.tree_number) : '',
+          row_main: item.row_main ? String(item.row_main) : '',
+          row_sub: item.row_sub ? String(item.row_sub) : '',
+          status: item.status || '',
+          height_m: item.height_m ? String(item.height_m) : '',
+          dbh_cm: item.dbh_cm ? String(item.dbh_cm) : '',
+          bamboo_culms: item.bamboo_culms ? String(item.bamboo_culms) : '',
+          note: item.note || '',
+          survey_date: item.survey_date || today,
+          recorder: item.recorder || '',
+          verified: false
+        };
+      });
+
+      setPendingData(prev => [...prev, ...newPending]);
+    } catch (error) {
+      console.error('Error analyzing file:', error);
+      alert('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + (error as any).message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleVerifyPending = (id: string) => setPendingData(prev => prev.map(p => p.id === id ? { ...p, verified: true } : p));
+  const handleUnverifyPending = (id: string) => setPendingData(prev => prev.map(p => p.id === id ? { ...p, verified: false } : p));
+  const handleDeletePending = (id: string) => setPendingData(prev => prev.filter(p => p.id !== id));
+  const handleUpdatePending = (id: string, field: keyof PendingGrowthRecord, value: string) =>
+    setPendingData(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+
+  const handleSaveVerified = async () => {
+    const verified = pendingData.filter(p => p.verified);
+    if (verified.length === 0 || !onBulkSubmitGrowthLogs) return;
+
+    const payload = verified.map(v => {
+
+      // Build tree_code if not present
+      let treeCode = v.tree_code;
+      if (!treeCode && v.plot_code && speciesCode && v.tree_number) {
+        treeCode = `${v.plot_code}${speciesCode}${v.tree_number.padStart(3, '0')}`;
+      }
+
+      // Build tag_label
+      const plot = PLOT_LIST.find(p => p.code === v.plot_code);
+      const plotShort = plot?.short || v.plot_code;
+      const mainPad = v.row_main.toString().padStart(2, '0');
+      const tagLabel = v.tree_number
+        ? `${v.tree_number} ${plotShort} ${mainPad} (${v.row_sub}) ${speciesName}`
+        : treeCode;
+
+      return {
+        tree_code: treeCode,
+        plot_code: v.plot_code,
+        species_code: speciesCode,
+        species_name: speciesName,
+        species_group: speciesGroup,
+        tree_number: v.tree_number,
+        row_main: v.row_main,
+        row_sub: v.row_sub,
+        tag_label: tagLabel,
+        status: v.status,
+        height_m: v.height_m,
+        dbh_cm: v.dbh_cm,
+        bamboo_culms: v.bamboo_culms,
+        note: v.note,
+        survey_date: v.survey_date,
+        recorder: v.recorder
+      };
+    });
+
+    await onBulkSubmitGrowthLogs(payload);
+    setPendingData(prev => prev.filter(p => !p.verified));
+    setImportMode(false);
+  };
+
+  // --- IMPORT MODE RENDER ---
+
+  if (importMode) {
+    return (
+      <div className="flex flex-col h-full bg-gray-50">
+        <div className="p-6 bg-green-50 border-b border-green-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3 text-green-800">
+              <FileText size={24} />
+              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (PDF/รูปภาพ)</h2>
+            </div>
+            <button onClick={() => setImportMode(false)} className="text-green-700 hover:text-green-900 font-bold text-sm">
+              กลับไปหน้าตาราง
+            </button>
+          </div>
+          <div className="flex gap-4 items-center">
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="application/pdf,image/*"
+              onChange={handleFileUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isAnalyzing}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
+            >
+              {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+              {isAnalyzing ? 'กำลังวิเคราะห์...' : 'อัพโหลดไฟล์'}
+            </button>
+            <span className="text-sm text-gray-500">รองรับไฟล์ PDF หรือรูปภาพตารางข้อมูล</span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          {pendingData.length > 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 className="font-bold text-gray-700">รายการที่อ่านได้ ({pendingData.length})</h3>
+                <div className="flex gap-3">
+                  <button onClick={() => setPendingData(prev => prev.map(p => ({ ...p, verified: true })))} className="text-xs text-green-600 font-bold hover:underline">ยืนยันทั้งหมด</button>
+                  <button onClick={() => setPendingData([])} className="text-xs text-red-600 font-bold hover:underline">ล้างทั้งหมด</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm min-w-[1100px]">
+                  <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-bold">
+                    <tr>
+                      <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
+                      <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
+                      <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
+                      <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
+                      <th className="px-3 py-3 whitespace-nowrap">แถว</th>
+                      <th className="px-3 py-3 whitespace-nowrap">สถานะ</th>
+                      <th className="px-3 py-3 whitespace-nowrap text-right">สูง (ม.)</th>
+                      <th className="px-3 py-3 whitespace-nowrap text-right">RCD (ซม.)</th>
+                      <th className="px-3 py-3 whitespace-nowrap">หมายเหตุ</th>
+                      <th className="px-3 py-3 whitespace-nowrap">วันที่</th>
+                      <th className="px-3 py-3 whitespace-nowrap">ผู้บันทึก</th>
+                      <th className="px-3 py-3 text-center whitespace-nowrap">ยืนยัน</th>
+                      <th className="px-3 py-3 text-right whitespace-nowrap">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {pendingData.map((row) => (
+                      <tr key={row.id} className={row.verified ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                        <td className="px-3 py-2">
+                          <input value={row.tree_code} onChange={e => handleUpdatePending(row.id, 'tree_code', e.target.value)}
+                            className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={row.plot_code} onChange={e => handleUpdatePending(row.id, 'plot_code', e.target.value)}
+                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-20">
+                            <option value="">—</option>
+                            {PLOT_LIST.map(p => <option key={p.code} value={p.code}>{p.code}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={row.species_code} onChange={e => {
+                              const s = SPECIES_LIST.find(x => x.code === e.target.value);
+                              handleUpdatePending(row.id, 'species_code', e.target.value);
+                              if (s) handleUpdatePending(row.id, 'species_name', s.name);
+                            }}
+                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28">
+                            <option value="">— เลือก —</option>
+                            {SPECIES_LIST.map(s => <option key={s.code} value={s.code}>{s.code} {s.name}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={row.tree_number} onChange={e => handleUpdatePending(row.id, 'tree_number', e.target.value)}
+                            className="w-12 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1">
+                            <input value={row.row_main} onChange={e => handleUpdatePending(row.id, 'row_main', e.target.value)}
+                              placeholder="หลัก" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+                            <span className="text-gray-400">/</span>
+                            <input value={row.row_sub} onChange={e => handleUpdatePending(row.id, 'row_sub', e.target.value)}
+                              placeholder="ย่อย" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={row.status} onChange={e => handleUpdatePending(row.id, 'status', e.target.value)}
+                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs">
+                            <option value="">—</option>
+                            <option value="alive">รอด</option>
+                            <option value="dead">ตาย</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input value={row.height_m} onChange={e => handleUpdatePending(row.id, 'height_m', e.target.value)}
+                            className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input value={row.dbh_cm} onChange={e => handleUpdatePending(row.id, 'dbh_cm', e.target.value)}
+                            className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={row.note} onChange={e => handleUpdatePending(row.id, 'note', e.target.value)}
+                            className="w-32 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="date" value={row.survey_date} onChange={e => handleUpdatePending(row.id, 'survey_date', e.target.value)}
+                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input value={row.recorder} onChange={e => handleUpdatePending(row.id, 'recorder', e.target.value)}
+                            className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {row.verified ? (
+                            <span className="inline-flex items-center gap-1 text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded-full whitespace-nowrap">
+                              <Check size={11} /> ยืนยัน
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded-full whitespace-nowrap">
+                              รอ
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            {row.verified ? (
+                              <button onClick={() => handleUnverifyPending(row.id)} className="p-1 text-yellow-500 hover:bg-yellow-100 rounded" title="ยกเลิกการยืนยัน"><X size={15} /></button>
+                            ) : (
+                              <button onClick={() => handleVerifyPending(row.id)} className="p-1 text-green-600 hover:bg-green-100 rounded" title="ยืนยัน"><Check size={15} /></button>
+                            )}
+                            <button onClick={() => handleDeletePending(row.id)} className="p-1 text-red-400 hover:bg-red-50 rounded" title="ลบ"><Trash2 size={15} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
+              <Upload size={48} className="mb-4 opacity-50" />
+              <p>อัพโหลดไฟล์เพื่อเริ่มนำเข้าข้อมูลต้นไม้</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 bg-white border-t border-gray-200 flex justify-end gap-3 items-center">
+          <span className="text-sm text-gray-500 mr-auto">
+            ยืนยันแล้ว: <span className="font-bold text-green-600">{pendingData.filter(p => p.verified).length}</span> / {pendingData.length}
+          </span>
+          <button onClick={() => setImportMode(false)} className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">ยกเลิก</button>
+          <button
+            onClick={handleSaveVerified}
+            disabled={pendingData.filter(p => p.verified).length === 0 || isLoading}
+            className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+            บันทึกข้อมูลที่เลือก
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full relative">
@@ -111,6 +496,16 @@ const TableView: React.FC<TableViewProps> = ({
             <Eraser size={15} />
             ล้างข้อมูลซ้ำ
           </button>
+          {onBulkSubmitGrowthLogs && (
+            <button
+              onClick={() => setImportMode(true)}
+              className="flex items-center gap-1.5 bg-green-100 hover:bg-green-200 text-green-700 font-semibold rounded-lg px-3 py-2 text-sm transition-colors whitespace-nowrap"
+              title="นำเข้าข้อมูลจากไฟล์ PDF หรือรูปภาพ"
+            >
+              <Upload size={15} />
+              นำเข้าจากไฟล์
+            </button>
+          )}
         </div>
       </div>
 
