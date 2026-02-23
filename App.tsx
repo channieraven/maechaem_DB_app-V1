@@ -494,6 +494,44 @@ const App: React.FC = () => {
     }
   };
 
+  const handleImageDelete = async (imageId: string) => {
+    setIsLoading(true);
+    setLoadingMessage('กำลังลบรูปภาพ...');
+    try {
+      const res = await apiPost({ action: 'deleteImage', id: imageId });
+      if (res.success) {
+        showToast('ลบรูปภาพเรียบร้อย', 'success');
+        setPlotImages(prev => prev.filter(img => img.id !== imageId));
+      } else {
+        showToast('ลบรูปภาพไม่สำเร็จ: ' + (res.error || 'Unknown'), 'error');
+      }
+    } catch (e: any) {
+      showToast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleImageUpdateDescription = async (imageId: string, description: string) => {
+    setIsLoading(true);
+    setLoadingMessage('กำลังบันทึกคำอธิบาย...');
+    try {
+      const res = await apiPost({ action: 'updateImage', id: imageId, description });
+      if (res.success) {
+        showToast('บันทึกคำอธิบายเรียบร้อย', 'success');
+        setPlotImages(prev => prev.map(img => img.id === imageId ? { ...img, description } : img));
+      } else {
+        showToast('บันทึกไม่สำเร็จ: ' + (res.error || 'Unknown'), 'error');
+      }
+    } catch (e: any) {
+      showToast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
   const handleSaveSpacing = async (analysisData: any) => {
     setIsLoading(true);
     setLoadingMessage('กำลังบันทึกข้อมูลระยะปลูก...');
@@ -808,6 +846,8 @@ const App: React.FC = () => {
             <PlotInfoView 
               savedImages={plotImages}
               onUploadImage={handleImageUpload}
+              onDeleteImage={handleImageDelete}
+              onUpdateImageDescription={handleImageUpdateDescription}
               onNavigateToMap={(plotCode) => {
                  setMapPlot(plotCode);
                  setActiveView('map');
