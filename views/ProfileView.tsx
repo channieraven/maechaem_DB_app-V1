@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, Mail, Briefcase, Building2, Calendar, ShieldCheck, ShieldAlert, Loader2, Users, ChevronDown } from 'lucide-react';
+import { User, Mail, Briefcase, Building2, Calendar, ShieldCheck, ShieldAlert, Loader2, Users, ChevronDown, CheckCircle, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiGet, apiPost } from '../services/sheetsService';
 
@@ -187,10 +187,31 @@ const UserManagementTab: React.FC = () => {
 
   useEffect(() => { loadUsers(); }, []);
 
+  const handleApprove = async (email: string) => {
+    setSavingEmail(email);
+    try {
+      // Set approved=true and promote from pending to researcher (default approved role)
+      const currentUser = users.find(u => u.email === email);
+      if (!currentUser) { setSavingEmail(null); return; }
+      const newRole = (!currentUser.role || currentUser.role === 'pending') ? 'researcher' : currentUser.role;
+      const res = await apiPost({ action: 'approveUser', email, role: newRole });
+      if (res.success) {
+        setUsers(prev => prev.map(u => u.email === email ? { ...u, approved: 'TRUE', role: newRole } : u));
+        showToast('อนุมัติผู้ใช้เรียบร้อย', true);
+      } else {
+        showToast(res.error || 'อนุมัติไม่สำเร็จ', false);
+      }
+    } catch {
+      showToast('เกิดข้อผิดพลาด', false);
+    } finally {
+      setSavingEmail(null);
+    }
+  };
+
   const handleRoleChange = async (email: string, newRole: string) => {
     setSavingEmail(email);
     try {
-      const res = await apiPost({ action: 'updateUserRole', username: email, role: newRole }); // backend expects 'username' key for email
+      const res = await apiPost({ action: 'updateUser', email, role: newRole });
       if (res.success) {
         setUsers(prev => prev.map(u => u.email === email ? { ...u, role: newRole } : u));
         showToast('อัปเดต role เรียบร้อย', true);
@@ -235,6 +256,7 @@ const UserManagementTab: React.FC = () => {
           const email = u.email as string; // filtered to only users with email above
           const badge = roleBadge(u.role);
           const isSaving = savingEmail === email;
+          const approved = isApproved(u.approved);
           return (
             <div key={email} className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-green-50 border border-green-100 flex items-center justify-center shrink-0">
@@ -244,23 +266,39 @@ const UserManagementTab: React.FC = () => {
                 <p className="text-sm font-semibold text-gray-900 truncate">{u.fullname || email}</p>
                 <p className="text-xs text-gray-400 truncate">{email}</p>
                 {u.position && <p className="text-xs text-gray-500 truncate">{u.position}</p>}
+                <span className={`inline-flex items-center gap-1 text-xs mt-1 ${approved ? 'text-green-600' : 'text-orange-500'}`}>
+                  {approved
+                    ? <><CheckCircle size={11} /> อนุมัติแล้ว</>
+                    : <><XCircle size={11} /> รออนุมัติ</>}
+                </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {isSaving ? (
                   <Loader2 size={18} className="animate-spin text-green-600" />
                 ) : (
-                  <div className="relative">
-                    <select
-                      value={u.role || 'pending'}
-                      onChange={(e) => handleRoleChange(email, e.target.value)}
-                      className={`appearance-none text-xs font-semibold pl-2.5 pr-6 py-1.5 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-400 ${badge.color}`}
-                    >
-                      {ROLE_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
-                  </div>
+                  <>
+                    {!approved && (
+                      <button
+                        onClick={() => handleApprove(email)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        title="อนุมัติผู้ใช้"
+                      >
+                        อนุมัติ
+                      </button>
+                    )}
+                    <div className="relative">
+                      <select
+                        value={u.role || 'pending'}
+                        onChange={(e) => handleRoleChange(email, e.target.value)}
+                        className={`appearance-none text-xs font-semibold pl-2.5 pr-6 py-1.5 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-400 ${badge.color}`}
+                      >
+                        {ROLE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
+                    </div>
+                  </>
                 )}
               </div>
             </div>
