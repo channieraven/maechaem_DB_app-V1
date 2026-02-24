@@ -29,6 +29,8 @@ const App: React.FC = () => {
 
   // --- STATE ---
   const [records, setRecords] = useState<TreeRecord[]>([]);
+  const [supplementaryRecords, setSupplementaryRecords] = useState<TreeRecord[]>([]);
+  const [activeTableDataset, setActiveTableDataset] = useState<'plan' | 'supp'>('plan');
   const [coordRecords, setCoordRecords] = useState<CoordRecord[]>([]);
   const [plotImages, setPlotImages] = useState<PlotImage[]>([]); // New State for Images
   const [activeView, setActiveView] = useState<ViewType>('table');
@@ -83,8 +85,9 @@ const App: React.FC = () => {
 
   // Edit & Delete States
   const [editLogId, setEditLogId] = useState<string | null>(null);
+  const [editingDataset, setEditingDataset] = useState<'plan' | 'supp'>('plan');
   const [deleteTarget, setDeleteTarget] = useState<TreeRecord | { tree_code: string; log_id?: string } | null>(null);
-  const [deleteType, setDeleteType] = useState<'growth' | 'coord'>('growth');
+  const [deleteType, setDeleteType] = useState<'growth' | 'coord' | 'growth_supp'>('growth');
 
   // Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +113,12 @@ const App: React.FC = () => {
       const growthRes = await apiGet('growth_logs');
       if (growthRes.success) {
         setRecords(growthRes.data);
+      }
+
+      // Fetch Supplementary Growth Logs
+      const suppRes = await apiGet('growth_logs_supp');
+      if (suppRes.success && Array.isArray(suppRes.data)) {
+        setSupplementaryRecords(suppRes.data);
       }
       
       setLoadingMessage('กำลังโหลดข้อมูลพิกัด...');
@@ -195,7 +204,7 @@ const App: React.FC = () => {
   };
 
   // --- HANDLERS ---
-  const handleEdit = (record: TreeRecord) => {
+  const handleEdit = (record: TreeRecord, dataset: 'plan' | 'supp' = 'plan') => {
     setFormData({
         plotCode: record.plot_code || '',
         treeNumber: record.tree_number ? record.tree_number.toString() : '',
@@ -222,6 +231,7 @@ const App: React.FC = () => {
         pricePerHand: record.price_per_hand ? record.price_per_hand.toString() : '',
     });
     setEditLogId(record.log_id || null);
+    setEditingDataset(dataset);
     // If we are on stats or coords, switch to table for editing context (or stay on map)
     if (activeView !== 'map') setActiveView('table');
     setShowMobileForm(true);
@@ -258,9 +268,9 @@ const App: React.FC = () => {
     showToast(`เพิ่มการสำรวจใหม่: ${record.tree_code}`, 'success');
   };
 
-  const handleDeleteRequest = (record: TreeRecord) => {
+  const handleDeleteRequest = (record: TreeRecord, dataset: 'plan' | 'supp' = 'plan') => {
     setDeleteTarget(record);
-    setDeleteType('growth');
+    setDeleteType(dataset === 'supp' ? 'growth_supp' : 'growth');
   };
 
   const handleBulkSubmitGrowthLogs = async (data: Array<{
@@ -268,7 +278,7 @@ const App: React.FC = () => {
     species_group: string; tree_number: string; row_main: string; row_sub: string;
     tag_label: string; status: string; height_m: string; dbh_cm: string;
     bamboo_culms: string; note: string; survey_date: string; recorder: string;
-  }>) => {
+  }>, targetSheet?: string) => {
     setIsLoading(true);
     let successCount = 0;
     let errorCount = 0;
@@ -278,6 +288,7 @@ const App: React.FC = () => {
       try {
         const res = await apiPost({
           action: 'addGrowthLog',
+          ...(targetSheet ? { target_sheet: targetSheet } : {}),
           tree_code: item.tree_code,
           tag_label: item.tag_label,
           plot_code: item.plot_code,
@@ -318,10 +329,12 @@ const App: React.FC = () => {
     setLoadingMessage('');
   };
 
-  const handleCleanDuplicates = async () => {
+  const handleCleanDuplicates = async (dataset: 'plan' | 'supp' = 'plan') => {
+    const sheetName = dataset === 'supp' ? 'growth_logs_supp' : 'growth_logs';
+    const sourceRecords = dataset === 'supp' ? supplementaryRecords : records;
     // Group records by tree_code + survey_date; keep the one with the highest log_id per group
     const groups: Map<string, TreeRecord[]> = new Map();
-    for (const r of records) {
+    for (const r of sourceRecords) {
       const key = `${r.tree_code}__${r.survey_date}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(r);
@@ -352,7 +365,7 @@ const App: React.FC = () => {
         const r = toDelete[i];
         setLoadingMessage(`กำลังล้างข้อมูลซ้ำ (${i + 1}/${toDelete.length})...`);
         if (!r.log_id) { errorCount++; continue; }
-        const res = await apiPost({ action: 'deleteRow', sheet: 'growth_logs', key_col: 'log_id', key_val: r.log_id, delete_all: false });
+        const res = await apiPost({ action: 'deleteRow', sheet: sheetName, key_col: 'log_id', key_val: r.log_id, delete_all: false });
         if (res.success) successCount++;
         else errorCount++;
       }
@@ -385,6 +398,14 @@ const App: React.FC = () => {
           return;
         }
         payload = { action: 'deleteRow', sheet: 'growth_logs', key_col: 'log_id', key_val: deleteTarget.log_id, delete_all: false };
+      } else if (deleteType === 'growth_supp') {
+        if (!deleteTarget.log_id) {
+          showToast('ไม่พบ log_id สำหรับลบ', 'error');
+          setIsLoading(false);
+          setLoadingMessage('');
+          return;
+        }
+        payload = { action: 'deleteRow', sheet: 'growth_logs_supp', key_col: 'log_id', key_val: deleteTarget.log_id, delete_all: false };
       } else if (deleteType === 'coord') {
         payload = { action: 'deleteRow', sheet: 'trees_profile', key_col: 'tree_code', key_val: deleteTarget.tree_code, delete_all: false };
       }
@@ -448,6 +469,7 @@ const App: React.FC = () => {
     };
     
     if (editLogId) newRecord.log_id = editLogId;
+    if (editingDataset === 'supp') newRecord.target_sheet = 'growth_logs_supp';
 
     setIsLoading(true);
     setLoadingMessage('กำลังบันทึกข้อมูล...');
@@ -457,6 +479,7 @@ const App: React.FC = () => {
       if (res.success) {
         showToast(editLogId ? `อัปเดตข้อมูล ${newRecord.tree_code} เรียบร้อย` : `บันทึกข้อมูล ${newRecord.tree_code} เรียบร้อย`, 'success');
         clearForm();
+        setEditingDataset('plan');
         setShowMobileForm(false);
         fetchData();
       } else {
@@ -883,6 +906,9 @@ const App: React.FC = () => {
           {activeView === 'table' && (
             <TableView 
               records={records}
+              supplementaryRecords={supplementaryRecords}
+              activeDataset={activeTableDataset}
+              setActiveDataset={setActiveTableDataset}
               isLoading={isLoading}
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
@@ -891,12 +917,16 @@ const App: React.FC = () => {
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               editLogId={editLogId}
-              onEdit={handleEdit}
-              onDelete={handleDeleteRequest}
-              onOpenMobileForm={() => { clearForm(); setShowMobileForm(true); }}
+              onEdit={(r) => handleEdit(r, activeTableDataset)}
+              onDelete={(r) => handleDeleteRequest(r, activeTableDataset)}
+              onOpenMobileForm={() => {
+                clearForm();
+                setEditingDataset(activeTableDataset);
+                setShowMobileForm(true);
+              }}
               onClearForm={clearForm}
-              onCleanDuplicates={handleCleanDuplicates}
-              onBulkSubmitGrowthLogs={handleBulkSubmitGrowthLogs}
+              onCleanDuplicates={() => handleCleanDuplicates(activeTableDataset)}
+              onBulkSubmitGrowthLogs={(data) => handleBulkSubmitGrowthLogs(data, activeTableDataset === 'supp' ? 'growth_logs_supp' : undefined)}
             />
           )}
           

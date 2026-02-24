@@ -1,5 +1,6 @@
 // --- Sheet Names ---
 var SHEET_GROWTH = "growth_logs";
+var SHEET_GROWTH_SUPP = "growth_logs_supp";
 var SHEET_COORD = "trees_profile";
 var SHEET_IMAGES = "plot_images";
 var SHEET_USERS = "users";
@@ -323,7 +324,7 @@ function getSheetData(sheetName) {
   var sheet = ss.getSheetByName(sheetName);
 
   if (!sheet) {
-    if (sheetName === SHEET_IMAGES) return responseJSON({ success: true, data: [] });
+    if (sheetName === SHEET_IMAGES || sheetName === SHEET_GROWTH_SUPP) return responseJSON({ success: true, data: [] });
     return responseJSON({ success: false, error: "Sheet not found: " + sheetName });
   }
 
@@ -347,8 +348,21 @@ function getSheetData(sheetName) {
 // --- Growth Log ---
 function addGrowthLog(data) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_GROWTH);
-  if (!sheet) return responseJSON({ success: false, error: "Sheet not found: " + SHEET_GROWTH });
+  var sheetName = data.target_sheet || SHEET_GROWTH;
+  var sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    // Auto-create the supplementary sheet with the same headers as growth_logs
+    if (sheetName === SHEET_GROWTH_SUPP) {
+      var masterSheet = ss.getSheetByName(SHEET_GROWTH);
+      if (masterSheet) {
+        sheet = ss.insertSheet(SHEET_GROWTH_SUPP);
+        var masterHeaders = masterSheet.getRange(1, 1, 1, masterSheet.getLastColumn()).getValues()[0];
+        sheet.getRange(1, 1, 1, masterHeaders.length).setValues([masterHeaders]);
+      }
+    }
+    if (!sheet) return responseJSON({ success: false, error: "Sheet not found: " + sheetName });
+  }
 
   var timestamp = new Date();
   var log_id    = data.log_id || "LOG_" + Date.now();

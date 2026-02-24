@@ -8,6 +8,9 @@ import { GoogleGenAI } from '@google/genai';
 
 interface TableViewProps {
   records: TreeRecord[];
+  supplementaryRecords: TreeRecord[];
+  activeDataset: 'plan' | 'supp';
+  setActiveDataset: (d: 'plan' | 'supp') => void;
   isLoading: boolean;
   searchTerm: string;
   setSearchTerm: (s: string) => void;
@@ -52,6 +55,9 @@ const CATEGORIES: PlantCategory[] = ['ไม้ป่า', 'ยางพาร�
 
 const TableView: React.FC<TableViewProps> = ({
   records,
+  supplementaryRecords,
+  activeDataset,
+  setActiveDataset,
   isLoading,
   searchTerm,
   setSearchTerm,
@@ -75,8 +81,11 @@ const TableView: React.FC<TableViewProps> = ({
   const [pendingData, setPendingData] = useState<PendingGrowthRecord[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Determine which records to display based on active dataset
+  const displayRecords = activeDataset === 'supp' ? supplementaryRecords : records;
+
   const filteredRecords = useMemo(() => {
-    const result = records.filter(r => {
+    const result = displayRecords.filter(r => {
       const matchesSearch = !searchTerm || 
         r.tree_code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         r.species_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -102,7 +111,7 @@ const TableView: React.FC<TableViewProps> = ({
       const numB = b.tree_number || parseInt(b.tree_code.slice(-3), 10) || 0;
       return numA - numB;
     });
-  }, [records, searchTerm, plotFilter, statusFilter, activeCategory]);
+  }, [displayRecords, searchTerm, plotFilter, statusFilter, activeCategory]);
 
   // --- IMPORT HANDLERS ---
 
@@ -506,6 +515,32 @@ const TableView: React.FC<TableViewProps> = ({
               นำเข้าจากไฟล์
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Dataset Tabs */}
+      <div className="px-4 pt-2 bg-white border-b border-gray-200 overflow-x-auto no-scrollbar">
+        <div className="flex space-x-1 min-w-max">
+          <button
+            onClick={() => setActiveDataset('plan')}
+            className={`px-5 py-2.5 text-sm font-bold rounded-t-lg transition-all ${
+              activeDataset === 'plan'
+                ? 'bg-green-700 text-white shadow-sm'
+                : 'text-gray-500 hover:text-green-700 hover:bg-gray-100'
+            }`}
+          >
+            ตารางข้อมูลต้นไม้ตามผัง
+          </button>
+          <button
+            onClick={() => setActiveDataset('supp')}
+            className={`px-5 py-2.5 text-sm font-bold rounded-t-lg transition-all ${
+              activeDataset === 'supp'
+                ? 'bg-green-700 text-white shadow-sm'
+                : 'text-gray-500 hover:text-green-700 hover:bg-gray-100'
+            }`}
+          >
+            ตารางข้อมูลต้นไม้ปลูกเสริม
+          </button>
         </div>
       </div>
 
