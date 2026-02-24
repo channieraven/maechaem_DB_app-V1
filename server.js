@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +25,37 @@ if (corsOrigin) {
   }));
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+
+// --- Gemini API Proxy ---
+app.post('/api/gemini', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server' });
+  }
+  const { prompt, imageData, mimeType } = req.body;
+  if (!prompt || !imageData || !mimeType) {
+    return res.status(400).json({ error: 'Missing required fields: prompt, imageData, mimeType' });
+  }
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const result = await genAI.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType, data: imageData } }
+          ]
+        }
+      ]
+    });
+    res.json({ text: result.text ?? '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Gemini API error' });
+  }
+});
 
 // --- Vite Middleware (Dev) or Static Files (Prod) ---
 if (process.env.NODE_ENV !== 'production') {

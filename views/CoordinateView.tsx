@@ -150,11 +150,6 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
       });
 
       // 2. Call Gemini API
-      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (!apiKey) throw new Error('VITE_GEMINI_API_KEY is not set in environment variables');
-
-      const genAI = new GoogleGenAI({ apiKey });
-
       const prompt = `
         Analyze this image/document. It contains a table of tree coordinates.
         Extract the data into a JSON array of objects.
@@ -170,20 +165,35 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
         - Return ONLY the JSON array. No markdown formatting.
       `;
 
-      const result = await genAI.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: file.type, data: base64Data } }
-            ]
-          }
-        ]
-      });
+      let responseText: string;
+      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      if (apiKey) {
+        const genAI = new GoogleGenAI({ apiKey });
+        const result = await genAI.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType: file.type, data: base64Data } }
+              ]
+            }
+          ]
+        });
+        responseText = result.text ?? '';
+      } else {
+        const resp = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
+        });
+        let json: any;
+        try { json = await resp.json(); } catch { json = {}; }
+        if (!resp.ok) throw new Error(json.error || `Gemini API proxy error (${resp.status})`);
+        responseText = json.text ?? '';
+      }
 
-      const responseText = result.text;
       if (!responseText) throw new Error('Gemini returned an empty response');
       console.log("Gemini Response:", responseText);
 
