@@ -10,7 +10,7 @@ export const APPSCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://sc
 // as GitHub Pages and a separate backend handles the Gemini proxy.
 // Note: VITE_GEMINI_API_KEY (a repository *secret*) is the simpler option for GitHub Pages –
 // it embeds the key at build time so no backend is needed at all.
-export const GEMINI_API_BASE: string = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+export const GEMINI_API_BASE: string = (import.meta.env.VITE_GEMINI_API_URL || '').replace(/\/$/, '');
 
 export const SPECIES_LIST: SpeciesInfo[] = [
   // Group A - Forest Trees
