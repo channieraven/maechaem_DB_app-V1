@@ -251,7 +251,7 @@ const App: React.FC = () => {
         status: null,
         flowering: null,
         note: '',
-        recorder: '',
+        recorder: user?.fullName || user?.name || '',
         surveyDate: new Date().toISOString().split('T')[0],
         bambooCulms: '',
         dbh1Cm: '',
@@ -473,7 +473,8 @@ const App: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    const { plotCode, speciesCode, treeNumber, rowMain, rowSub, recorder } = formData;
+    const { plotCode, speciesCode, treeNumber, rowMain, rowSub } = formData;
+    const recorder = user?.fullName || user?.name || formData.recorder;
     if (!plotCode || !speciesCode || !treeNumber || !rowMain || !rowSub || !recorder) {
       showToast('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'error');
       return;
@@ -793,7 +794,7 @@ const App: React.FC = () => {
           treeNumber: parseInt(match[3], 10).toString(),
           status: null,
           note: 'New tree from coordinate',
-          recorder: '',
+          recorder: user?.fullName || user?.name || '',
           surveyDate: new Date().toISOString().split('T')[0]
         }));
         setEditLogId(null);
@@ -952,6 +953,8 @@ const App: React.FC = () => {
           onClear={clearForm}
           treeCodePreview={treeCodePreview}
           tagLabelPreview={tagLabelPreview}
+          treeDataset={editingDataset}
+          setTreeDataset={setEditingDataset}
         />
 
         <section className="flex-1 flex flex-col min-w-0 bg-white">
