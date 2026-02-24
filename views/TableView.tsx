@@ -1,10 +1,11 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save, Map } from 'lucide-react';
-import { PLOT_LIST, SPECIES_LIST, GEMINI_API_BASE } from '../constants';
+import { PLOT_LIST, SPECIES_LIST } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
 import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
-import { GoogleGenAI } from '@google/genai';
+import Papa from 'papaparse';
+import readXlsxFile from 'read-excel-file/browser';
 
 interface TableViewProps {
   records: TreeRecord[];
@@ -123,148 +124,86 @@ const TableView: React.FC<TableViewProps> = ({
     setIsAnalyzing(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
     try {
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-          const result = reader.result?.toString().split(',')[1];
-          if (result) resolve(result);
-          else reject(new Error('Failed to read file as base64'));
-        };
-        reader.onerror = (err) => reject(err);
-      });
+      // Column name aliases (English and Thai) mapped to internal field keys
+      const colMap: Record<string, string> = {
+        'tree_code': 'tree_code', 'เลขรหัสต้นไม้': 'tree_code', 'รหัสต้นไม้': 'tree_code', 'tree code': 'tree_code',
+        'plot_code': 'plot_code', 'รหัสแปลง': 'plot_code', 'แปลง': 'plot_code', 'plot code': 'plot_code',
+        'species_name': 'species_name', 'ชนิดพันธุ์': 'species_name', 'species name': 'species_name',
+        'species_code': 'species_code', 'รหัสชนิดพันธุ์': 'species_code', 'species code': 'species_code',
+        'tree_number': 'tree_number', 'ต้นที่': 'tree_number', 'tree number': 'tree_number',
+        'row_main': 'row_main', 'แถวหลัก': 'row_main', 'main row': 'row_main',
+        'row_sub': 'row_sub', 'แถวย่อย': 'row_sub', 'sub row': 'row_sub',
+        'status': 'status', 'สถานะ': 'status',
+        'height_m': 'height_m', 'ความสูง': 'height_m', 'height': 'height_m',
+        'dbh_cm': 'dbh_cm', 'rcd': 'dbh_cm', 'dbh': 'dbh_cm', 'เส้นผ่านศูนย์กลาง': 'dbh_cm',
+        'bamboo_culms': 'bamboo_culms', 'จำนวนลำ': 'bamboo_culms', 'culms': 'bamboo_culms',
+        'note': 'note', 'หมายเหตุ': 'note',
+        'survey_date': 'survey_date', 'วันที่': 'survey_date', 'date': 'survey_date',
+        'recorder': 'recorder', 'ผู้บันทึก': 'recorder',
+      };
 
-      const speciesListHint = SPECIES_LIST.map(s => `${s.code}=${s.name}`).join(', ');
-      const plotListHint = PLOT_LIST.map(p => p.code).join(', ');
+      let rows: Record<string, any>[] = [];
+      const ext = file.name.split('.').pop()?.toLowerCase();
 
-      const prompt = `
-        Analyze this image/document. It contains a table of tree survey data.
-        Extract each row into a JSON array of objects.
-
-        Target Columns (map to these keys):
-        - 'เลขรหัสต้นไม้' or tree code -> "tree_code"
-        - 'รหัสแปลง' or plot code -> "plot_code" (values like: ${plotListHint})
-        - 'ชนิดพันธุ์' or species name -> "species_name"
-        - 'รหัสชนิดพันธุ์' or species code -> "species_code" (values like: ${speciesListHint})
-        - 'ต้นที่' or tree number -> "tree_number" (string)
-        - 'แถวหลัก' or main row -> "row_main" (string)
-        - 'แถวย่อย' or sub row -> "row_sub" (string)
-        - 'สถานะ' or status -> "status" ("alive", "dead", or "")
-        - 'ความสูง' or height (m) -> "height_m" (string, digits only)
-        - 'RCD' or 'DBH' or diameter -> "dbh_cm" (string, digits only)
-        - 'จำนวนลำ' or bamboo culms -> "bamboo_culms" (string)
-        - 'หมายเหตุ' or note -> "note" (string)
-        - 'วันที่' or survey date -> "survey_date" (YYYY-MM-DD format)
-        - 'ผู้บันทึก' or recorder -> "recorder" (string)
-
-        Rules:
-        - Ignore rows where both 'tree_code' and 'tree_number' are empty.
-        - All numeric values should be plain strings (digits/decimals only, no units).
-        - Return ONLY the JSON array. No markdown, no explanation.
-      `;
-
-      let responseText: string;
-      const geminiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      const openAiKey = (import.meta as any).env?.VITE_OPENAI_API_KEY;
-      if (geminiKey) {
-        const genAI = new GoogleGenAI({ apiKey: geminiKey });
-        const result = await genAI.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                { inlineData: { mimeType: file.type, data: base64Data } }
-              ]
-            }
-          ]
-        });
-        responseText = result.text ?? '';
-      } else if (openAiKey) {
-        if (file.type === 'application/pdf') {
-          throw new Error('OpenAI Vision ไม่รองรับไฟล์ PDF กรุณาใช้ไฟล์รูปภาพ (JPG/PNG) หรือตั้งค่า VITE_GEMINI_API_KEY แทน');
-        }
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAiKey}` },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64Data}` } }
-            ]}],
-            max_tokens: 4096
-          })
-        });
-        let json: any;
-        try { json = await resp.json(); } catch { json = {}; }
-        if (!resp.ok) throw new Error(json.error?.message || `OpenAI API error (${resp.status})`);
-        responseText = json.choices?.[0]?.message?.content ?? '';
-      } else if (GEMINI_API_BASE || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        const resp = await fetch(`${GEMINI_API_BASE}/api/gemini`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
-        });
-        let json: any;
-        try { json = await resp.json(); } catch { json = {}; }
-        if (!resp.ok) throw new Error(json.error || `AI proxy error (${resp.status})`);
-        responseText = json.text ?? '';
-      } else {
-        throw new Error(
-          'ยังไม่ได้ตั้งค่า AI สำหรับอ่านไฟล์ กรุณาตั้งค่าหนึ่งในนี้:\n' +
-          '• VITE_GEMINI_API_KEY (GitHub Secret) — รองรับ PDF และรูปภาพ\n' +
-          '• VITE_OPENAI_API_KEY (GitHub Secret) — รองรับรูปภาพเท่านั้น\n' +
-          '• VITE_GEMINI_API_URL — URL ของ backend server ที่มี GEMINI_API_KEY'
+      if (ext === 'csv') {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        rows = result.data as Record<string, any>[];
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const xlRows = await readXlsxFile(file);
+        if (xlRows.length < 2) throw new Error('ไฟล์ Excel ต้องมีแถวหัวข้อและข้อมูลอย่างน้อย 1 แถว');
+        const headers = xlRows[0].map(h => String(h ?? ''));
+        rows = xlRows.slice(1).map(row =>
+          Object.fromEntries(headers.map((h, i) => [h, row[i] !== null ? String(row[i] ?? '') : '']))
         );
+      } else {
+        throw new Error('รองรับเฉพาะไฟล์ .csv, .xlsx และ .xls เท่านั้น');
       }
-
-      if (!responseText) throw new Error('AI returned an empty response');
-      console.log('AI Growth Log Response:', responseText);
-
-      let jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const arrayStart = jsonString.indexOf('[');
-      const arrayEnd = jsonString.lastIndexOf(']');
-      if (arrayStart !== -1 && arrayEnd !== -1) {
-        jsonString = jsonString.substring(arrayStart, arrayEnd + 1);
-      }
-      const data = JSON.parse(jsonString);
 
       const today = new Date().toISOString().split('T')[0];
-      const newPending: PendingGrowthRecord[] = data.map((item: any, index: number) => {
-        // Try to find species_code from species_name if not provided
-        let speciesCode = item.species_code || '';
-        if (!speciesCode && item.species_name) {
-          const found = SPECIES_LIST.find(s =>
-            s.name.toLowerCase() === item.species_name.toLowerCase() ||
-            item.species_name.toLowerCase().includes(s.name.toLowerCase())
-          );
-          if (found) speciesCode = found.code;
-        }
-        return {
-          id: `${Date.now()}-${index}`,
-          tree_code: item.tree_code || '',
-          plot_code: item.plot_code || '',
-          species_code: speciesCode,
-          species_name: item.species_name || (SPECIES_LIST.find(s => s.code === speciesCode)?.name || ''),
-          tree_number: item.tree_number ? String(item.tree_number) : '',
-          row_main: item.row_main ? String(item.row_main) : '',
-          row_sub: item.row_sub ? String(item.row_sub) : '',
-          status: item.status || '',
-          height_m: item.height_m ? String(item.height_m) : '',
-          dbh_cm: item.dbh_cm ? String(item.dbh_cm) : '',
-          bamboo_culms: item.bamboo_culms ? String(item.bamboo_culms) : '',
-          note: item.note || '',
-          survey_date: item.survey_date || today,
-          recorder: item.recorder || '',
-          verified: false
-        };
-      });
+      const newPending: PendingGrowthRecord[] = rows
+        .map((rawRow: Record<string, any>, index: number) => {
+          // Normalize keys using colMap
+          const item: Record<string, string> = {};
+          for (const [rawKey, value] of Object.entries(rawRow)) {
+            const trimmed = rawKey.trim();
+            const mapped = colMap[trimmed.toLowerCase()] ?? colMap[trimmed];
+            if (mapped) item[mapped] = String(value ?? '').trim();
+          }
+          // Try to resolve species_code from species_name if missing
+          let speciesCode = item.species_code || '';
+          if (!speciesCode && item.species_name) {
+            const found = SPECIES_LIST.find(s =>
+              s.name.toLowerCase() === item.species_name.toLowerCase() ||
+              item.species_name.toLowerCase().includes(s.name.toLowerCase())
+            );
+            if (found) speciesCode = found.code;
+          }
+          return {
+            id: `${Date.now()}-${index}`,
+            tree_code: item.tree_code || '',
+            plot_code: item.plot_code || '',
+            species_code: speciesCode,
+            species_name: item.species_name || (SPECIES_LIST.find(s => s.code === speciesCode)?.name || ''),
+            tree_number: item.tree_number || '',
+            row_main: item.row_main || '',
+            row_sub: item.row_sub || '',
+            status: item.status || '',
+            height_m: item.height_m || '',
+            dbh_cm: item.dbh_cm || '',
+            bamboo_culms: item.bamboo_culms || '',
+            note: item.note || '',
+            survey_date: item.survey_date || today,
+            recorder: item.recorder || '',
+            verified: false
+          };
+        })
+        .filter(r => r.tree_code || r.tree_number);
 
+      if (newPending.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์ กรุณาตรวจสอบชื่อคอลัมน์ให้ตรงกับรูปแบบที่กำหนด');
       setPendingData(prev => [...prev, ...newPending]);
     } catch (error) {
-      console.error('Error analyzing file:', error);
+      console.error('Error parsing file:', error);
       alert('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + (error as any).message);
     } finally {
       setIsAnalyzing(false);
@@ -331,7 +270,7 @@ const TableView: React.FC<TableViewProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3 text-green-800">
               <FileText size={24} />
-              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (PDF/รูปภาพ)</h2>
+              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (CSV/Excel)</h2>
             </div>
             <button onClick={() => setImportMode(false)} className="text-green-700 hover:text-green-900 font-bold text-sm">
               กลับไปหน้าตาราง
@@ -342,7 +281,7 @@ const TableView: React.FC<TableViewProps> = ({
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept="application/pdf,image/*"
+              accept=".csv,.xlsx,.xls"
               onChange={handleFileUpload}
             />
             <button
@@ -351,9 +290,9 @@ const TableView: React.FC<TableViewProps> = ({
               className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
             >
               {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
-              {isAnalyzing ? 'กำลังวิเคราะห์...' : 'อัพโหลดไฟล์'}
+              {isAnalyzing ? 'กำลังอ่านไฟล์...' : 'อัพโหลดไฟล์'}
             </button>
-            <span className="text-sm text-gray-500">รองรับไฟล์ PDF หรือรูปภาพตารางข้อมูล</span>
+            <span className="text-sm text-gray-500">รองรับไฟล์ CSV และ Excel (.xlsx, .xls)</span>
           </div>
         </div>
 

@@ -1,10 +1,11 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { MapPin, Loader2, ExternalLink, Pencil, Trash2, ChevronLeft, ChevronRight, Upload, FileText, Check, X, Save, ChevronDown, ChevronUp, Eraser } from 'lucide-react';
-import { PLOT_LIST, GEMINI_API_BASE } from '../constants';
+import { PLOT_LIST } from '../constants';
 import { utmToLatLng } from '../utils/geo';
 import { CoordRecord, TreeRecord } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import Papa from 'papaparse';
+import readXlsxFile from 'read-excel-file/browser';
 
 interface CoordinateViewProps {
   records: TreeRecord[];
@@ -133,121 +134,56 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
     if (!file) return;
 
     setIsAnalyzing(true);
-    // Reset input early so the same file can be re-uploaded if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     try {
-      // 1. Convert file to base64
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-          const result = reader.result?.toString().split(',')[1];
-          if (result) resolve(result);
-          else reject(new Error('Failed to read file as base64'));
-        };
-        reader.onerror = (err) => reject(err);
-      });
+      // Column name aliases (English and Thai) mapped to internal field keys
+      const colMap: Record<string, string> = {
+        'tree_code': 'tree_code', 'เลขรหัสต้นไม้': 'tree_code', 'รหัสต้นไม้': 'tree_code', 'tree code': 'tree_code',
+        'utm_x': 'utm_x', 'พิกัด x': 'utm_x', 'x': 'utm_x', 'easting': 'utm_x',
+        'utm_y': 'utm_y', 'พิกัด y': 'utm_y', 'y': 'utm_y', 'northing': 'utm_y',
+      };
 
-      // 2. Call Gemini API
-      const prompt = `
-        Analyze this image/document. It contains a table of tree coordinates.
-        Extract the data into a JSON array of objects.
+      let rows: Record<string, any>[] = [];
+      const ext = file.name.split('.').pop()?.toLowerCase();
 
-        Target Columns:
-        - 'เลขรหัสต้นไม้' (Tree Code) -> map to key "tree_code"
-        - 'พิกัด X' (UTM X) -> map to key "utm_x"
-        - 'พิกัด Y' (UTM Y) -> map to key "utm_y"
-
-        Rules:
-        - Ignore rows where 'tree_code' is empty.
-        - "utm_x" and "utm_y" should be strings (digits).
-        - Return ONLY the JSON array. No markdown formatting.
-      `;
-
-      let responseText: string;
-      const geminiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      const openAiKey = (import.meta as any).env?.VITE_OPENAI_API_KEY;
-      if (geminiKey) {
-        const genAI = new GoogleGenAI({ apiKey: geminiKey });
-        const result = await genAI.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                { inlineData: { mimeType: file.type, data: base64Data } }
-              ]
-            }
-          ]
-        });
-        responseText = result.text ?? '';
-      } else if (openAiKey) {
-        if (file.type === 'application/pdf') {
-          throw new Error('OpenAI Vision ไม่รองรับไฟล์ PDF กรุณาใช้ไฟล์รูปภาพ (JPG/PNG) หรือตั้งค่า VITE_GEMINI_API_KEY แทน');
-        }
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAiKey}` },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64Data}` } }
-            ]}],
-            max_tokens: 4096
-          })
-        });
-        let json: any;
-        try { json = await resp.json(); } catch { json = {}; }
-        if (!resp.ok) throw new Error(json.error?.message || `OpenAI API error (${resp.status})`);
-        responseText = json.choices?.[0]?.message?.content ?? '';
-      } else if (GEMINI_API_BASE || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        const endpoint = `${GEMINI_API_BASE}/api/gemini`;
-        const resp = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
-        });
-        let json: any;
-        try { json = await resp.json(); } catch { json = {}; }
-        if (!resp.ok) throw new Error(json.error || `AI proxy error (${resp.status})`);
-        responseText = json.text ?? '';
-      } else {
-        throw new Error(
-          'ยังไม่ได้ตั้งค่า AI สำหรับอ่านไฟล์ กรุณาตั้งค่าหนึ่งในนี้:\n' +
-          '• VITE_GEMINI_API_KEY (GitHub Secret) — รองรับ PDF และรูปภาพ\n' +
-          '• VITE_OPENAI_API_KEY (GitHub Secret) — รองรับรูปภาพเท่านั้น\n' +
-          '• VITE_GEMINI_API_URL — URL ของ backend server ที่มี GEMINI_API_KEY'
+      if (ext === 'csv') {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        rows = result.data as Record<string, any>[];
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const xlRows = await readXlsxFile(file);
+        if (xlRows.length < 2) throw new Error('ไฟล์ Excel ต้องมีแถวหัวข้อและข้อมูลอย่างน้อย 1 แถว');
+        const headers = xlRows[0].map(h => String(h ?? ''));
+        rows = xlRows.slice(1).map(row =>
+          Object.fromEntries(headers.map((h, i) => [h, row[i] !== null ? String(row[i] ?? '') : '']))
         );
+      } else {
+        throw new Error('รองรับเฉพาะไฟล์ .csv, .xlsx และ .xls เท่านั้น');
       }
 
-      if (!responseText) throw new Error('AI returned an empty response');
-      console.log("AI Response:", responseText);
+      const newPending: PendingCoord[] = rows
+        .map((rawRow: Record<string, any>, index: number) => {
+          const item: Record<string, string> = {};
+          for (const [rawKey, value] of Object.entries(rawRow)) {
+            const trimmed = rawKey.trim();
+            const mapped = colMap[trimmed.toLowerCase()] ?? colMap[trimmed];
+            if (mapped) item[mapped] = String(value ?? '').trim();
+          }
+          return {
+            id: `${Date.now()}-${index}`,
+            tree_code: item.tree_code || '',
+            utm_x: item.utm_x || '',
+            utm_y: item.utm_y || '',
+            status: 'unverified' as const
+          };
+        })
+        .filter(r => r.tree_code);
 
-      // 3. Parse JSON
-      let jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const arrayStart = jsonString.indexOf('[');
-      const arrayEnd = jsonString.lastIndexOf(']');
-      if (arrayStart !== -1 && arrayEnd !== -1) {
-        jsonString = jsonString.substring(arrayStart, arrayEnd + 1);
-      }
-
-      const data = JSON.parse(jsonString);
-
-      // 4. Map to Pending State
-      const newPending: PendingCoord[] = data.map((item: any, index: number) => ({
-        id: Date.now() + '-' + index,
-        tree_code: item.tree_code || '',
-        utm_x: item.utm_x || '',
-        utm_y: item.utm_y || '',
-        status: 'unverified'
-      }));
-
+      if (newPending.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์ กรุณาตรวจสอบชื่อคอลัมน์ให้ตรงกับรูปแบบที่กำหนด');
       setPendingData(prev => [...prev, ...newPending]);
     } catch (error) {
-      console.error("Error analyzing file:", error);
+      console.error("Error parsing file:", error);
       alert("เกิดข้อผิดพลาดในการอ่านไฟล์: " + (error as any).message);
     } finally {
       setIsAnalyzing(false);
@@ -321,7 +257,7 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3 text-blue-800">
               <FileText size={24} />
-              <h2 className="text-xl font-bold">นำเข้าข้อมูลจากไฟล์ (PDF/Image)</h2>
+              <h2 className="text-xl font-bold">นำเข้าข้อมูลจากไฟล์ (CSV/Excel)</h2>
             </div>
             <button 
               onClick={() => setImportMode(false)}
@@ -336,7 +272,7 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept="application/pdf,image/*"
+              accept=".csv,.xlsx,.xls"
               onChange={handleFileUpload}
             />
             <button 
@@ -345,9 +281,9 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
               className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
             >
               {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
-              {isAnalyzing ? 'กำลังวิเคราะห์...' : 'อัพโหลดไฟล์'}
+              {isAnalyzing ? 'กำลังอ่านไฟล์...' : 'อัพโหลดไฟล์'}
             </button>
-            <span className="text-sm text-gray-500">รองรับไฟล์ PDF หรือรูปภาพตาราง</span>
+            <span className="text-sm text-gray-500">รองรับไฟล์ CSV และ Excel (.xlsx, .xls)</span>
           </div>
         </div>
 
