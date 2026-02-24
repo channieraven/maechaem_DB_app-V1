@@ -3,15 +3,6 @@ import { SpeciesInfo, PlotImage } from './types';
 
 export const APPSCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxvQiO4pQ-zk9rOBn_kSGPjhYOnuscerta-pjbJXj1UDaCoMGtRg9nUnVZvwP6seisZ/exec';
 
-// Base URL for backend API endpoints (e.g. /api/gemini).
-// Leave empty when running with a local Express server (same-origin requests work automatically).
-// Set VITE_API_URL as a GitHub repository *variable* (not a secret) to a full URL
-// (e.g. https://my-backend.example.com) when the frontend is hosted on a static host such
-// as GitHub Pages and a separate backend handles the Gemini proxy.
-// Note: VITE_GEMINI_API_KEY (a repository *secret*) is the simpler option for GitHub Pages –
-// it embeds the key at build time so no backend is needed at all.
-export const GEMINI_API_BASE: string = (import.meta.env.VITE_GEMINI_API_URL || '').replace(/\/$/, '');
-
 export const SPECIES_LIST: SpeciesInfo[] = [
   // Group A - Forest Trees
   { code: 'A01', name: 'สัก', group: 'A' },
