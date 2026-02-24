@@ -42,4 +42,4 @@ In your repository go to **Settings → Pages** and set **Source** to **"GitHub 
 
 ---
 
-trigger deploy 11
+trigger deploy 12
