@@ -9,7 +9,7 @@ interface HeaderProps {
   onRefresh: () => void;
   activeView: ViewType;
   setActiveView: (view: ViewType) => void;
-  user?: { name: string; picture?: string; email: string } | null;
+  user?: { name: string; fullName?: string; picture?: string; email: string } | null;
   onLogout?: () => void;
 }
 
@@ -75,7 +75,7 @@ const Header: React.FC<HeaderProps> = ({ stats, isLoading, onRefresh, activeView
                 ) : (
                   <User size={16} className="text-white/80" />
                 )}
-                <span className="text-xs text-white/90 truncate max-w-[100px]">{user.name}</span>
+                <span className="text-xs text-white/90 truncate max-w-[100px]">{user.fullName || user.name}</span>
               </button>
 
               {/* Mobile Profile Button */}

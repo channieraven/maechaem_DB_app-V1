@@ -141,7 +141,8 @@ const App: React.FC = () => {
           url: item.url,
           description: item.description,
           uploader: item.uploader,
-          date: item.date ? (typeof item.date === 'string' && item.date.includes('T') ? item.date.split('T')[0] : item.date) : ''
+          date: item.date ? (typeof item.date === 'string' && item.date.includes('T') ? item.date.split('T')[0] : item.date) : '',
+          upload_timestamp: item.timestamp ? String(item.timestamp) : undefined,
         }));
         setPlotImages(mappedImages);
       }
@@ -596,8 +597,7 @@ const App: React.FC = () => {
         plot_code: imgData.plotCode, 
         image_type: imgData.type,
         gallery_category: imgData.galleryCategory || '',
-        // Send the URL directly. You MUST update the Google Apps Script to handle this.
-        image_base64: imgData.url, 
+        url: imgData.url,
         description: imgData.description,
         uploader: imgData.uploader,
         date: imgData.date
