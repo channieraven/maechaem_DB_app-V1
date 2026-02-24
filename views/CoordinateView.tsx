@@ -166,9 +166,10 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
       `;
 
       let responseText: string;
-      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (apiKey) {
-        const genAI = new GoogleGenAI({ apiKey });
+      const geminiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const openAiKey = (import.meta as any).env?.VITE_OPENAI_API_KEY;
+      if (geminiKey) {
+        const genAI = new GoogleGenAI({ apiKey: geminiKey });
         const result = await genAI.models.generateContent({
           model: "gemini-1.5-flash",
           contents: [
@@ -182,26 +183,48 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
           ]
         });
         responseText = result.text ?? '';
+      } else if (openAiKey) {
+        if (file.type === 'application/pdf') {
+          throw new Error('OpenAI Vision ไม่รองรับไฟล์ PDF กรุณาใช้ไฟล์รูปภาพ (JPG/PNG) หรือตั้งค่า VITE_GEMINI_API_KEY แทน');
+        }
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAiKey}` },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64Data}` } }
+            ]}],
+            max_tokens: 4096
+          })
+        });
+        let json: any;
+        try { json = await resp.json(); } catch { json = {}; }
+        if (!resp.ok) throw new Error(json.error?.message || `OpenAI API error (${resp.status})`);
+        responseText = json.choices?.[0]?.message?.content ?? '';
       } else if (GEMINI_API_BASE || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        const resp = await fetch(`${GEMINI_API_BASE}/api/gemini`, {
+        const endpoint = `${GEMINI_API_BASE}/api/gemini`;
+        const resp = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
         });
         let json: any;
         try { json = await resp.json(); } catch { json = {}; }
-        if (!resp.ok) throw new Error(json.error || `Gemini API proxy error (${resp.status})`);
+        if (!resp.ok) throw new Error(json.error || `AI proxy error (${resp.status})`);
         responseText = json.text ?? '';
       } else {
         throw new Error(
-          'Gemini AI is not configured. ' +
-          'Set the VITE_GEMINI_API_KEY secret (GitHub Pages) or ' +
-          'VITE_API_URL variable pointing to a backend server that has GEMINI_API_KEY set.'
+          'ยังไม่ได้ตั้งค่า AI สำหรับอ่านไฟล์ กรุณาตั้งค่าหนึ่งในนี้:\n' +
+          '• VITE_GEMINI_API_KEY (GitHub Secret) — รองรับ PDF และรูปภาพ\n' +
+          '• VITE_OPENAI_API_KEY (GitHub Secret) — รองรับรูปภาพเท่านั้น\n' +
+          '• VITE_GEMINI_API_URL — URL ของ backend server ที่มี GEMINI_API_KEY'
         );
       }
 
-      if (!responseText) throw new Error('Gemini returned an empty response');
-      console.log("Gemini Response:", responseText);
+      if (!responseText) throw new Error('AI returned an empty response');
+      console.log("AI Response:", responseText);
 
       // 3. Parse JSON
       let jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
