@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef } from 'react';
-import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save } from 'lucide-react';
+import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save, Map } from 'lucide-react';
 import { PLOT_LIST, SPECIES_LIST } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
 import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
@@ -24,6 +24,7 @@ interface TableViewProps {
   onOpenMobileForm: () => void;
   onClearForm: () => void;
   onCleanDuplicates: () => void;
+  onNavigateToMap?: (plotCode: string) => void;
   onBulkSubmitGrowthLogs?: (data: Array<{
     tree_code: string; plot_code: string; species_code: string; species_name: string;
     species_group: string; tree_number: string; row_main: string; row_sub: string;
@@ -71,6 +72,7 @@ const TableView: React.FC<TableViewProps> = ({
   onOpenMobileForm,
   onClearForm,
   onCleanDuplicates,
+  onNavigateToMap,
   onBulkSubmitGrowthLogs
 }) => {
   const [activeCategory, setActiveCategory] = useState<PlantCategory>('ไม้ป่า');
@@ -488,6 +490,16 @@ const TableView: React.FC<TableViewProps> = ({
             <option value="">ทุกแปลง</option>
             {PLOT_LIST.map(p => <option key={p.code} value={p.code}>{p.code}</option>)}
           </select>
+          {plotFilter && onNavigateToMap && (
+            <button
+              onClick={() => onNavigateToMap(plotFilter)}
+              className="flex items-center gap-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold rounded-lg px-3 py-2 text-sm transition-colors whitespace-nowrap"
+              title="ดูแปลงนี้บนแผนที่ดาวเทียม"
+            >
+              <Map size={15} />
+              ดูในแผนที่
+            </button>
+          )}
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}

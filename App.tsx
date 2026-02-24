@@ -384,6 +384,51 @@ const App: React.FC = () => {
     setDeleteType('coord');
   };
 
+  const handleCleanDuplicateCoords = async () => {
+    // Group coordRecords by tree_code; count occurrences
+    const countMap = new Map<string, number>();
+    for (const r of coordRecords) {
+      countMap.set(r.tree_code, (countMap.get(r.tree_code) || 0) + 1);
+    }
+
+    const duplicates: { tree_code: string; deleteCount: number }[] = [];
+    countMap.forEach((count, tree_code) => {
+      if (count > 1) duplicates.push({ tree_code, deleteCount: count - 1 });
+    });
+
+    if (duplicates.length === 0) {
+      showToast('ไม่พบข้อมูลพิกัดซ้ำในระบบ', 'info');
+      return;
+    }
+
+    const totalToDelete = duplicates.reduce((sum, d) => sum + d.deleteCount, 0);
+    if (!window.confirm(`พบพิกัดต้นไม้ซ้ำ ${duplicates.length} รหัส (${totalToDelete} รายการ)\nต้องการลบออกหรือไม่?`)) return;
+
+    setIsLoading(true);
+    setLoadingMessage('กำลังล้างข้อมูลพิกัดซ้ำ...');
+    let successCount = 0;
+    let errorCount = 0;
+    try {
+      let processed = 0;
+      for (const { tree_code, deleteCount } of duplicates) {
+        for (let i = 0; i < deleteCount; i++) {
+          processed++;
+          setLoadingMessage(`กำลังล้างข้อมูลพิกัดซ้ำ (${processed}/${totalToDelete})...`);
+          const res = await apiPost({ action: 'deleteRow', sheet: 'trees_profile', key_col: 'tree_code', key_val: tree_code, delete_all: false });
+          if (res.success) successCount++;
+          else errorCount++;
+        }
+      }
+      showToast(`ล้างข้อมูลพิกัดซ้ำเรียบร้อย ${successCount} รายการ${errorCount > 0 ? ` (ผิดพลาด ${errorCount})` : ''}`, errorCount > 0 ? 'info' : 'success');
+      fetchData();
+    } catch (err: any) {
+      showToast('เกิดข้อผิดพลาดในการล้างข้อมูลพิกัดซ้ำ', 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setIsLoading(true);
@@ -758,6 +803,11 @@ const App: React.FC = () => {
     }
   };
 
+  const handleNavigateToMap = (plotCode: string) => {
+    setMapPlot(plotCode);
+    setActiveView('map');
+  };
+
   // --- AUTH EFFECT ---
   useEffect(() => {
     if (user) {
@@ -926,6 +976,7 @@ const App: React.FC = () => {
               }}
               onClearForm={clearForm}
               onCleanDuplicates={() => handleCleanDuplicates(activeTableDataset)}
+              onNavigateToMap={handleNavigateToMap}
               onBulkSubmitGrowthLogs={(data) => handleBulkSubmitGrowthLogs(data, activeTableDataset === 'supp' ? 'growth_logs_supp' : undefined)}
             />
           )}
@@ -1069,6 +1120,7 @@ const App: React.FC = () => {
                }}
                onEdit={handleEditCoord}
                onDelete={handleDeleteCoordRequest}
+               onCleanDuplicateCoords={handleCleanDuplicateCoords}
                coordPlotFilter={coordPlotFilter}
                setCoordPlotFilter={setCoordPlotFilter}
                coordTreeCode={coordTreeCode}
