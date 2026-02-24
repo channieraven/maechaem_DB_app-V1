@@ -47,6 +47,7 @@ interface PendingGrowthRecord {
   height_m: string;
   dbh_cm: string;
   bamboo_culms: string;
+  flowering: string;
   note: string;
   survey_date: string;
   recorder: string;
@@ -227,6 +228,7 @@ const TableView: React.FC<TableViewProps> = ({
             height_m: item.height_m || '',
             dbh_cm: item.dbh_cm || '',
             bamboo_culms: item.bamboo_culms || '',
+            flowering: item.flowering || '',
             note: item.note || '',
             survey_date: item.survey_date || today,
             recorder: item.recorder || '',
@@ -337,17 +339,17 @@ const TableView: React.FC<TableViewProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 min-h-0 p-4 flex flex-col">
           {pendingData.length > 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 min-h-0 flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
                 <h3 className="font-bold text-gray-700">รายการที่อ่านได้ ({pendingData.length})</h3>
                 <div className="flex gap-3">
                   <button onClick={() => setPendingData(prev => prev.map(p => ({ ...p, verified: true })))} className="text-xs text-green-600 font-bold hover:underline">ยืนยันทั้งหมด</button>
                   <button onClick={() => setPendingData([])} className="text-xs text-red-600 font-bold hover:underline">ล้างทั้งหมด</button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-auto flex-1">
                 <table className="w-full text-left text-sm min-w-[1100px]">
                   <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-bold">
                     <tr>
