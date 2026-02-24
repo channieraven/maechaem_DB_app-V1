@@ -48,7 +48,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // GAS has no server-side session — restore user from localStorage only.
     try {
       const stored = localStorage.getItem(USER_STORAGE_KEY);
-      if (stored) setUser(JSON.parse(stored));
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Backfill 'name' for sessions stored before this fix
+        if (!parsed.name) {
+          parsed.name = parsed.fullName || parsed.username || parsed.email || '';
+        }
+        setUser(parsed);
+      }
     } catch (err) {
       console.error('Failed to parse stored user data:', err);
     }
@@ -81,8 +88,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await gasPost({ action: 'login', email, password });
       if (result.success && result.user) {
-        setUser(result.user);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user));
+        const user: User = {
+          ...result.user,
+          // Ensure 'name' is always a non-empty string since GAS returns 'fullName', not 'name'
+          name: result.user.fullName || result.user.username || email,
+        };
+        setUser(user);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
         setIsLoading(false);
         return { success: true };
       } else {

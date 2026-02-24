@@ -14,6 +14,13 @@ interface PlotInfoViewProps {
   onNavigateToMap: (plotCode: string) => void;
 }
 
+/** Format an upload timestamp for display (date only) and tooltip (full datetime). */
+const formatUploadDate = (ts: string | undefined, fallback: string | undefined): string =>
+  ts ? new Date(ts).toLocaleDateString('th-TH') : (fallback || '-');
+
+const formatUploadTooltip = (ts: string | undefined): string =>
+  ts ? `อัพโหลด: ${new Date(ts).toLocaleString('th-TH')}` : '';
+
 // --- Lightbox Component ---
 const Lightbox = ({ image, onClose }: { image: PlotImage, onClose: () => void }) => {
   const [scale, setScale] = useState(1);
@@ -216,7 +223,9 @@ const PlanCard = ({
        </div>
        <div className="p-2 text-[10px] text-gray-500 bg-white border-t border-gray-100 flex justify-between shrink-0">
           <span className="truncate max-w-[60%]">{image?.uploader ? `${image.uploader}` : '-'}</span>
-          <span>{image?.date || '-'}</span>
+          <span title={formatUploadTooltip(image?.upload_timestamp)}>
+            {formatUploadDate(image?.upload_timestamp, image?.date)}
+          </span>
        </div>
     </div>
 );
@@ -323,7 +332,8 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
           url: imageUrl,
           description: desc,
           uploader: uploadUploader,
-          date: uploadDate
+          date: uploadDate,
+          upload_timestamp: new Date().toISOString(),
         };
 
         setLocalImages(prev => [newImage, ...prev]);
@@ -545,7 +555,13 @@ const PlotInfoView: React.FC<PlotInfoViewProps> = ({ savedImages, onUploadImage,
                                      <p className="text-sm font-bold text-gray-800 truncate">{img.description || 'ไม่มีคำอธิบาย'}</p>
                                      <div className="flex justify-between items-center mt-2 text-[10px] text-gray-500">
                                         <span className="flex items-center gap-1"><User size={10} /> {img.uploader || '-'}</span>
-                                        <span className="flex items-center gap-1"><Calendar size={10} /> {img.date}</span>
+                                        <span
+                                          className="flex items-center gap-1"
+                                          title={formatUploadTooltip(img.upload_timestamp)}
+                                        >
+                                          <Calendar size={10} />
+                                          {formatUploadDate(img.upload_timestamp, img.date)}
+                                        </span>
                                      </div>
                                   </div>
                                </div>

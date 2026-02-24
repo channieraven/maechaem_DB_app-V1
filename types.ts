@@ -105,6 +105,7 @@ export interface PlotImage {
   description?: string;
   uploader?: string;
   date?: string;
+  upload_timestamp?: string; // exact server-side timestamp when the file was uploaded
 }
 
 export type ViewType = 'table' | 'coords' | 'map' | 'stats' | 'history' | 'plotInfo' | 'profile';
