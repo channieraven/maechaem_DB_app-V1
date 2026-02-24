@@ -183,7 +183,11 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
         });
         responseText = result.text ?? '';
       } else {
-        const resp = await fetch('/api/gemini', {
+        const apiBase = (import.meta as any).env?.VITE_API_URL || '';
+        if (!apiBase && typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+          throw new Error('ไม่พบการตั้งค่า API Key หรือ API URL กรุณาตั้งค่า VITE_GEMINI_API_KEY หรือ VITE_API_URL');
+        }
+        const resp = await fetch(`${apiBase}/api/gemini`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
