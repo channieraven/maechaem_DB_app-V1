@@ -66,6 +66,22 @@ interface PendingGrowthRecord {
 
 const CATEGORIES: PlantCategory[] = ['ไม้ป่า', 'ยางพารา', 'ผลผลิตไผ่', 'ไม้ผล', 'กล้วย'];
 
+// Format ISO date string to d/M/yyyy
+const formatDate = (dateStr: string): string => {
+  if (!dateStr) return '-';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parseInt(parts[2])}/${parseInt(parts[1])}/${parts[0]}`;
+};
+
+// Extract row_main and row_sub from tag_label when fields are empty
+// tag_label format: "{tree_number} {PlotShort} {row_main} ({row_sub}) {species}"
+const extractRowFromTag = (tag: string): { row_main: string; row_sub: string } => {
+  const match = tag?.match(/^\d+\s+P\w+\s+(\d+)\s+\(([^)]+)\)/);
+  if (match) return { row_main: match[1], row_sub: match[2] };
+  return { row_main: '', row_sub: '' };
+};
+
 const TableView: React.FC<TableViewProps> = ({
   records,
   supplementaryRecords,
@@ -888,7 +904,7 @@ const TableView: React.FC<TableViewProps> = ({
                 return (
                   <tr key={r.log_id || i} className={`hover:bg-green-50/50 transition-colors group ${editLogId === r.log_id ? 'bg-amber-50' : ''}`}>
                     <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                       <div>{r.survey_date}</div>
+                       <div>{formatDate(r.survey_date)}</div>
                        <div className="text-[10px] text-gray-400">{r.recorder}</div>
                     </td>
                     <td className="px-4 py-3 text-center font-mono text-sm font-bold text-green-700">
@@ -906,8 +922,8 @@ const TableView: React.FC<TableViewProps> = ({
                       <span className={`inline-block w-2 h-2 rounded-full mr-2 ${r.species_group === 'A' ? 'bg-green-600' : 'bg-orange-600'}`}></span>
                       {r.species_name}
                     </td>
-                    <td className="px-4 py-3 text-center font-mono text-sm">{r.row_main || '-'}</td>
-                    <td className="px-4 py-3 text-center font-mono text-sm">{r.row_sub || '-'}</td>
+                    <td className="px-4 py-3 text-center font-mono text-sm">{r.row_main || extractRowFromTag(r.tag_label).row_main || '-'}</td>
+                    <td className="px-4 py-3 text-center font-mono text-sm">{r.row_sub || extractRowFromTag(r.tag_label).row_sub || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
                         r.status === 'alive' ? 'bg-green-100 text-green-700' : 

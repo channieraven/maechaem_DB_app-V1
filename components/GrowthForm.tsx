@@ -4,6 +4,7 @@ import { Pencil, Plus, X, Save, Loader2, Leaf } from 'lucide-react';
 import { PLOT_LIST, SPECIES_LIST } from '../constants';
 import { GrowthFormData } from '../types';
 import { getCategoryFromInfo, getCategoryColor } from '../utils/classification';
+import { useAuth } from '../contexts/AuthContext';
 
 interface GrowthFormProps {
   formData: GrowthFormData;
@@ -17,6 +18,8 @@ interface GrowthFormProps {
   onClear: () => void;
   treeCodePreview: string;
   tagLabelPreview: string;
+  treeDataset: 'plan' | 'supp';
+  setTreeDataset: (d: 'plan' | 'supp') => void;
 }
 
 const GrowthForm: React.FC<GrowthFormProps> = ({
@@ -30,8 +33,11 @@ const GrowthForm: React.FC<GrowthFormProps> = ({
   onSubmit,
   onClear,
   treeCodePreview,
-  tagLabelPreview
+  tagLabelPreview,
+  treeDataset,
+  setTreeDataset
 }) => {
+  const { user } = useAuth();
   const handleChange = (field: keyof GrowthFormData, value: any) => {
     setFormData({ ...formData, [field]: value });
   };
@@ -75,6 +81,18 @@ const GrowthForm: React.FC<GrowthFormProps> = ({
               </span>
             )}
           </h3>
+          {/* Dataset Selector */}
+          <div className="flex flex-col gap-1 mb-4">
+            <label className="text-xs font-semibold text-gray-500">ประเภทต้นไม้</label>
+            <select
+              value={treeDataset}
+              onChange={(e) => setTreeDataset(e.target.value as 'plan' | 'supp')}
+              className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500/20 focus:border-green-600 outline-none"
+            >
+              <option value="plan">ต้นตามผัง</option>
+              <option value="supp">ต้นปลูกเสริม</option>
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-500">แปลง</label>
@@ -308,7 +326,7 @@ const GrowthForm: React.FC<GrowthFormProps> = ({
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-500">ผู้บันทึก</label>
-              <input type="text" value={formData.recorder} onChange={(e) => handleChange('recorder', e.target.value)} placeholder="ชื่อผู้บันทึก" className="bg-white border border-gray-200 rounded-md p-2 text-sm" />
+              <input type="text" value={user?.fullName || user?.name || formData.recorder} readOnly className="bg-gray-100 border border-gray-200 rounded-md p-2 text-sm text-gray-600 cursor-not-allowed" />
             </div>
           </div>
           <div className="flex gap-2 pt-2">
