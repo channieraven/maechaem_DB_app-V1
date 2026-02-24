@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { MapPin, Loader2, ExternalLink, Pencil, Trash2, ChevronLeft, ChevronRight, Upload, FileText, Check, X, Save, ChevronDown, ChevronUp, Eraser } from 'lucide-react';
-import { PLOT_LIST } from '../constants';
+import { PLOT_LIST, GEMINI_API_BASE } from '../constants';
 import { utmToLatLng } from '../utils/geo';
 import { CoordRecord, TreeRecord } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -182,8 +182,8 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
           ]
         });
         responseText = result.text ?? '';
-      } else {
-        const resp = await fetch('/api/gemini', {
+      } else if (GEMINI_API_BASE || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const resp = await fetch(`${GEMINI_API_BASE}/api/gemini`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
@@ -192,6 +192,12 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
         try { json = await resp.json(); } catch { json = {}; }
         if (!resp.ok) throw new Error(json.error || `Gemini API proxy error (${resp.status})`);
         responseText = json.text ?? '';
+      } else {
+        throw new Error(
+          'Gemini AI is not configured. ' +
+          'Set the VITE_GEMINI_API_KEY secret (GitHub Pages) or ' +
+          'VITE_API_URL variable pointing to a backend server that has GEMINI_API_KEY set.'
+        );
       }
 
       if (!responseText) throw new Error('Gemini returned an empty response');

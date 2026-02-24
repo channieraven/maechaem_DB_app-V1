@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save, Map } from 'lucide-react';
-import { PLOT_LIST, SPECIES_LIST } from '../constants';
+import { PLOT_LIST, SPECIES_LIST, GEMINI_API_BASE } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
 import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
 import { GoogleGenAI } from '@google/genai';
@@ -180,8 +180,8 @@ const TableView: React.FC<TableViewProps> = ({
           ]
         });
         responseText = result.text ?? '';
-      } else {
-        const resp = await fetch('/api/gemini', {
+      } else if (GEMINI_API_BASE || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const resp = await fetch(`${GEMINI_API_BASE}/api/gemini`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, imageData: base64Data, mimeType: file.type }),
@@ -190,6 +190,12 @@ const TableView: React.FC<TableViewProps> = ({
         try { json = await resp.json(); } catch { json = {}; }
         if (!resp.ok) throw new Error(json.error || `Gemini API proxy error (${resp.status})`);
         responseText = json.text ?? '';
+      } else {
+        throw new Error(
+          'Gemini AI is not configured. ' +
+          'Set the VITE_GEMINI_API_KEY secret (GitHub Pages) or ' +
+          'VITE_API_URL variable pointing to a backend server that has GEMINI_API_KEY set.'
+        );
       }
 
       if (!responseText) throw new Error('Gemini returned an empty response');
