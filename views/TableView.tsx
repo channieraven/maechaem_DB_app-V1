@@ -3,7 +3,7 @@ import React, { useMemo, useState, useRef } from 'react';
 import { Search, Loader2, Pencil, Trash2, Plus, Sprout, Leaf, Eraser, Upload, FileText, Check, X, Save, Map } from 'lucide-react';
 import { PLOT_LIST, SPECIES_LIST } from '../constants';
 import { TreeRecord, PlantCategory } from '../types';
-import { getCategoryFromRecord, getCategoryColor } from '../utils/classification';
+import { getCategoryFromRecord, getCategoryColor, getPlantCategory } from '../utils/classification';
 import Papa from 'papaparse';
 import readXlsxFile from 'read-excel-file/browser';
 
@@ -131,12 +131,15 @@ const TableView: React.FC<TableViewProps> = ({
         'species_name': 'species_name', 'ชนิดพันธุ์': 'species_name', 'species name': 'species_name',
         'species_code': 'species_code', 'รหัสชนิดพันธุ์': 'species_code', 'species code': 'species_code',
         'tree_number': 'tree_number', 'ต้นที่': 'tree_number', 'tree number': 'tree_number',
+        'tag_label': 'tag_label', 'เลขแท็กต้นไม้': 'tag_label', 'แท็ก': 'tag_label',
         'row_main': 'row_main', 'แถวหลัก': 'row_main', 'main row': 'row_main',
         'row_sub': 'row_sub', 'แถวย่อย': 'row_sub', 'sub row': 'row_sub',
         'status': 'status', 'สถานะ': 'status',
-        'height_m': 'height_m', 'ความสูง': 'height_m', 'height': 'height_m',
-        'dbh_cm': 'dbh_cm', 'rcd': 'dbh_cm', 'dbh': 'dbh_cm', 'เส้นผ่านศูนย์กลาง': 'dbh_cm',
-        'bamboo_culms': 'bamboo_culms', 'จำนวนลำ': 'bamboo_culms', 'culms': 'bamboo_culms',
+        'height_m': 'height_m', 'ความสูง_ม': 'height_m', 'ความสูง': 'height_m', 'height': 'height_m',
+        'dbh_cm': 'dbh_cm', 'ความโตที่ระดับคอราก_ซม': 'dbh_cm', 'rcd': 'dbh_cm', 'dbh': 'dbh_cm', 'เส้นผ่านศูนย์กลาง': 'dbh_cm',
+        'bamboo_culms': 'bamboo_culms', 'ไผ่_จำนวนลำ': 'bamboo_culms', 'จำนวนลำ': 'bamboo_culms', 'culms': 'bamboo_culms',
+        'ไผ่_ความโต_ซม': 'bamboo_dbh',
+        'flowering': 'flowering', 'การติดดอกออกผล': 'flowering',
         'note': 'note', 'หมายเหตุ': 'note',
         'survey_date': 'survey_date', 'วันที่': 'survey_date', 'date': 'survey_date',
         'recorder': 'recorder', 'ผู้บันทึก': 'recorder',
@@ -145,7 +148,7 @@ const TableView: React.FC<TableViewProps> = ({
       let rows: Record<string, any>[] = [];
       const ext = file.name.split('.').pop()?.toLowerCase();
 
-      if (ext === 'csv') {
+      if (ext === 'csv' || ext === 'txt') {
         const text = await file.text();
         const result = Papa.parse(text, { header: true, skipEmptyLines: true });
         rows = result.data as Record<string, any>[];
@@ -157,7 +160,7 @@ const TableView: React.FC<TableViewProps> = ({
           Object.fromEntries(headers.map((h, i) => [h, row[i] !== null ? String(row[i] ?? '') : '']))
         );
       } else {
-        throw new Error('รองรับเฉพาะไฟล์ .csv, .xlsx และ .xls เท่านั้น');
+        throw new Error('รองรับเฉพาะไฟล์ .csv, .txt, .xlsx และ .xls เท่านั้น');
       }
 
       const today = new Date().toISOString().split('T')[0];
@@ -179,6 +182,38 @@ const TableView: React.FC<TableViewProps> = ({
             );
             if (found) speciesCode = found.code;
           }
+          // Auto-extract plot_code, species_code, tree_number from tree_code
+          // Format: {PlotCode}{SpeciesCode}{3-digit-seq} e.g. "P05A20001" → P05, A20, 1
+          if (item.tree_code) {
+            const codeMatch = item.tree_code.match(/^(P\d{2,3})([AB]\d{2})(\d{3})$/i);
+            if (codeMatch) {
+              if (!item.plot_code) item.plot_code = codeMatch[1].toUpperCase();
+              if (!speciesCode) { speciesCode = codeMatch[2].toUpperCase(); item.species_code = speciesCode; }
+              if (!item.tree_number) item.tree_number = String(parseInt(codeMatch[3], 10));
+            }
+          }
+          // Auto-extract from tag_label
+          // Format: "{tree_number} {PlotShort} {row_main} ({row_sub}) {species}" e.g. "1 P5 01 (01) ไผ่"
+          if (item.tag_label) {
+            const tagMatch = item.tag_label.match(/^(\d+)\s+(P\w+)\s+(\d+)\s+\(([^)]+)\)\s+(.+)$/);
+            if (tagMatch) {
+              if (!item.tree_number) item.tree_number = tagMatch[1];
+              if (!item.plot_code) {
+                const foundPlot = PLOT_LIST.find(p => p.short === tagMatch[2] || p.code === tagMatch[2]);
+                item.plot_code = foundPlot?.code || tagMatch[2];
+              }
+              if (!item.row_main) item.row_main = tagMatch[3];
+              if (!item.row_sub) item.row_sub = tagMatch[4];
+              if (!item.species_name) item.species_name = tagMatch[5].trim();
+            }
+          }
+          // Normalize flowering: ✓ → yes, X/x → no (trim to handle extra whitespace)
+          const floweringVal = item.flowering?.trim().toLowerCase();
+          if (floweringVal === '✓') item.flowering = 'yes';
+          else if (floweringVal === 'x') item.flowering = 'no';
+          else if (floweringVal) item.flowering = floweringVal;
+          // For bamboo: use bamboo_dbh as dbh_cm if dbh_cm is absent
+          if (!item.dbh_cm && item.bamboo_dbh) item.dbh_cm = item.bamboo_dbh;
           return {
             id: `${Date.now()}-${index}`,
             tree_code: item.tree_code || '',
@@ -221,6 +256,12 @@ const TableView: React.FC<TableViewProps> = ({
     if (verified.length === 0 || !onBulkSubmitGrowthLogs) return;
 
     const payload = verified.map(v => {
+
+      // Resolve per-record species info
+      const speciesCode = v.species_code;
+      const foundSpecies = SPECIES_LIST.find(s => s.code === speciesCode);
+      const speciesName = v.species_name || foundSpecies?.name || '';
+      const speciesGroup = foundSpecies?.group || 'A';
 
       // Build tree_code if not present
       let treeCode = v.tree_code;
@@ -270,7 +311,7 @@ const TableView: React.FC<TableViewProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3 text-green-800">
               <FileText size={24} />
-              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (CSV/Excel)</h2>
+              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (CSV/TXT/Excel)</h2>
             </div>
             <button onClick={() => setImportMode(false)} className="text-green-700 hover:text-green-900 font-bold text-sm">
               กลับไปหน้าตาราง
@@ -281,7 +322,7 @@ const TableView: React.FC<TableViewProps> = ({
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.txt,.xlsx,.xls"
               onChange={handleFileUpload}
             />
             <button
@@ -292,7 +333,7 @@ const TableView: React.FC<TableViewProps> = ({
               {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
               {isAnalyzing ? 'กำลังอ่านไฟล์...' : 'อัพโหลดไฟล์'}
             </button>
-            <span className="text-sm text-gray-500">รองรับไฟล์ CSV และ Excel (.xlsx, .xls)</span>
+            <span className="text-sm text-gray-500">รองรับไฟล์ CSV, TXT และ Excel (.xlsx, .xls)</span>
           </div>
         </div>
 
@@ -311,6 +352,7 @@ const TableView: React.FC<TableViewProps> = ({
                   <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-bold">
                     <tr>
                       <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
+                      <th className="px-3 py-3 whitespace-nowrap">ประเภท</th>
                       <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
                       <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
                       <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
@@ -331,6 +373,13 @@ const TableView: React.FC<TableViewProps> = ({
                         <td className="px-3 py-2">
                           <input value={row.tree_code} onChange={e => handleUpdatePending(row.id, 'tree_code', e.target.value)}
                             className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs" />
+                        </td>
+                        <td className="px-3 py-2">
+                          {(() => {
+                            const sg = SPECIES_LIST.find(s => s.code === row.species_code)?.group || 'A';
+                            const cat = getPlantCategory(row.species_name, sg);
+                            return <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap ${getCategoryColor(cat)}`}>{cat}</span>;
+                          })()}
                         </td>
                         <td className="px-3 py-2">
                           <select value={row.plot_code} onChange={e => handleUpdatePending(row.id, 'plot_code', e.target.value)}
