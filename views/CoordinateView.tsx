@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef } from 'react';
-import { MapPin, Loader2, ExternalLink, Pencil, Trash2, ChevronLeft, ChevronRight, Upload, FileText, Check, X, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { MapPin, Loader2, ExternalLink, Pencil, Trash2, ChevronLeft, ChevronRight, Upload, FileText, Check, X, Save, ChevronDown, ChevronUp, Eraser } from 'lucide-react';
 import { PLOT_LIST } from '../constants';
 import { utmToLatLng } from '../utils/geo';
 import { CoordRecord, TreeRecord } from '../types';
@@ -16,6 +16,7 @@ interface CoordinateViewProps {
   onDelete: (r: CoordRecord) => void;
   onNavigateToTree?: (treeCode: string) => void;
   onSyncToTable?: () => void;
+  onCleanDuplicateCoords?: () => void;
   // Form State props
   coordPlotFilter: string;
   setCoordPlotFilter: (s: string) => void;
@@ -45,6 +46,7 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
   onDelete,
   onNavigateToTree,
   onSyncToTable,
+  onCleanDuplicateCoords,
   coordPlotFilter,
   setCoordPlotFilter,
   coordTreeCode,
@@ -450,6 +452,14 @@ const CoordinateView: React.FC<CoordinateViewProps> = ({
             {isFormExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
           <div className="flex gap-2">
+            <button 
+              onClick={onCleanDuplicateCoords}
+              className="flex items-center gap-2 bg-white border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-yellow-100 transition-colors"
+              title="ล้างข้อมูลพิกัดที่ซ้ำกัน"
+            >
+              <Eraser size={18} />
+              ล้างข้อมูลซ้ำ
+            </button>
             <button 
               onClick={onSyncToTable}
               className="flex items-center gap-2 bg-white border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-yellow-100 transition-colors"
