@@ -277,7 +277,9 @@ const App: React.FC = () => {
     tree_code: string; plot_code: string; species_code: string; species_name: string;
     species_group: string; tree_number: string; row_main: string; row_sub: string;
     tag_label: string; status: string; height_m: string; dbh_cm: string;
-    bamboo_culms: string; note: string; survey_date: string; recorder: string;
+    bamboo_culms: string; dbh_1_cm: string; dbh_2_cm: string; dbh_3_cm: string;
+    banana_total: string; banana_1yr: string; yield_bunches: string; yield_hands: string;
+    price_per_hand: string; flowering: string; note: string; survey_date: string; recorder: string;
   }>, targetSheet?: string) => {
     setIsLoading(true);
     let successCount = 0;
@@ -299,21 +301,21 @@ const App: React.FC = () => {
           row_main: item.row_main,
           row_sub: item.row_sub,
           status: item.status || null,
-          flowering: null,
+          flowering: item.flowering || null,
           note: item.note,
           recorder: item.recorder,
           survey_date: item.survey_date,
           height_m: item.height_m || null,
           dbh_cm: item.dbh_cm || null,
           bamboo_culms: item.bamboo_culms || null,
-          dbh_1_cm: null,
-          dbh_2_cm: null,
-          dbh_3_cm: null,
-          banana_total: null,
-          banana_1yr: null,
-          yield_bunches: null,
-          yield_hands: null,
-          price_per_hand: null,
+          dbh_1_cm: item.dbh_1_cm || null,
+          dbh_2_cm: item.dbh_2_cm || null,
+          dbh_3_cm: item.dbh_3_cm || null,
+          banana_total: item.banana_total || null,
+          banana_1yr: item.banana_1yr || null,
+          yield_bunches: item.yield_bunches || null,
+          yield_hands: item.yield_hands || null,
+          price_per_hand: item.price_per_hand || null,
         });
         if (res.success) successCount++;
         else errorCount++;

@@ -30,7 +30,9 @@ interface TableViewProps {
     tree_code: string; plot_code: string; species_code: string; species_name: string;
     species_group: string; tree_number: string; row_main: string; row_sub: string;
     tag_label: string; status: string; height_m: string; dbh_cm: string;
-    bamboo_culms: string; note: string; survey_date: string; recorder: string;
+    bamboo_culms: string; dbh_1_cm: string; dbh_2_cm: string; dbh_3_cm: string;
+    banana_total: string; banana_1yr: string; yield_bunches: string; yield_hands: string;
+    price_per_hand: string; flowering: string; note: string; survey_date: string; recorder: string;
   }>) => Promise<void>;
 }
 
@@ -47,6 +49,15 @@ interface PendingGrowthRecord {
   height_m: string;
   dbh_cm: string;
   bamboo_culms: string;
+  dbh_1_cm: string;
+  dbh_2_cm: string;
+  dbh_3_cm: string;
+  banana_total: string;
+  banana_1yr: string;
+  yield_bunches: string;
+  yield_hands: string;
+  price_per_hand: string;
+  flowering: string;
   note: string;
   survey_date: string;
   recorder: string;
@@ -82,7 +93,13 @@ const TableView: React.FC<TableViewProps> = ({
   const [importMode, setImportMode] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pendingData, setPendingData] = useState<PendingGrowthRecord[]>([]);
+  const [activePendingCategory, setActivePendingCategory] = useState<PlantCategory>('ไม้ป่า');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getRowCategory = (row: PendingGrowthRecord): PlantCategory => {
+    const sg = SPECIES_LIST.find(s => s.code === row.species_code)?.group || 'A';
+    return getPlantCategory(row.species_name, sg);
+  };
 
   // Determine which records to display based on active dataset
   const displayRecords = activeDataset === 'supp' ? supplementaryRecords : records;
@@ -138,7 +155,14 @@ const TableView: React.FC<TableViewProps> = ({
         'height_m': 'height_m', 'ความสูง_ม': 'height_m', 'ความสูง': 'height_m', 'height': 'height_m',
         'dbh_cm': 'dbh_cm', 'ความโตที่ระดับคอราก_ซม': 'dbh_cm', 'rcd': 'dbh_cm', 'dbh': 'dbh_cm', 'เส้นผ่านศูนย์กลาง': 'dbh_cm',
         'bamboo_culms': 'bamboo_culms', 'ไผ่_จำนวนลำ': 'bamboo_culms', 'จำนวนลำ': 'bamboo_culms', 'culms': 'bamboo_culms',
-        'ไผ่_ความโต_ซม': 'bamboo_dbh',
+        'dbh_1_cm': 'dbh_1_cm', 'ไผ่_ความโต_ซม': 'dbh_1_cm', 'ไผ่_ความโต1_ซม': 'dbh_1_cm', 'rcd_1': 'dbh_1_cm', 'dbh1': 'dbh_1_cm', 'dbh_1': 'dbh_1_cm',
+        'dbh_2_cm': 'dbh_2_cm', 'ไผ่_ความโต2_ซม': 'dbh_2_cm', 'rcd_2': 'dbh_2_cm', 'dbh2': 'dbh_2_cm', 'dbh_2': 'dbh_2_cm',
+        'dbh_3_cm': 'dbh_3_cm', 'ไผ่_ความโต3_ซม': 'dbh_3_cm', 'rcd_3': 'dbh_3_cm', 'dbh3': 'dbh_3_cm', 'dbh_3': 'dbh_3_cm',
+        'banana_total': 'banana_total', 'กล้วย_ต้นรวม': 'banana_total', 'ต้นรวม': 'banana_total',
+        'banana_1yr': 'banana_1yr', 'กล้วย_ต้น1ปี': 'banana_1yr', 'ต้น1ปี': 'banana_1yr',
+        'yield_bunches': 'yield_bunches', 'เครือ': 'yield_bunches',
+        'yield_hands': 'yield_hands', 'หวี': 'yield_hands',
+        'price_per_hand': 'price_per_hand', 'ราคาต่อหวี': 'price_per_hand',
         'flowering': 'flowering', 'การติดดอกออกผล': 'flowering',
         'note': 'note', 'หมายเหตุ': 'note',
         'survey_date': 'survey_date', 'วันที่': 'survey_date', 'date': 'survey_date',
@@ -212,8 +236,6 @@ const TableView: React.FC<TableViewProps> = ({
           if (floweringVal === '✓') item.flowering = 'yes';
           else if (floweringVal === 'x') item.flowering = 'no';
           else if (floweringVal) item.flowering = floweringVal;
-          // For bamboo: use bamboo_dbh as dbh_cm if dbh_cm is absent
-          if (!item.dbh_cm && item.bamboo_dbh) item.dbh_cm = item.bamboo_dbh;
           return {
             id: `${Date.now()}-${index}`,
             tree_code: item.tree_code || '',
@@ -227,6 +249,15 @@ const TableView: React.FC<TableViewProps> = ({
             height_m: item.height_m || '',
             dbh_cm: item.dbh_cm || '',
             bamboo_culms: item.bamboo_culms || '',
+            dbh_1_cm: item.dbh_1_cm || '',
+            dbh_2_cm: item.dbh_2_cm || '',
+            dbh_3_cm: item.dbh_3_cm || '',
+            banana_total: item.banana_total || '',
+            banana_1yr: item.banana_1yr || '',
+            yield_bunches: item.yield_bunches || '',
+            yield_hands: item.yield_hands || '',
+            price_per_hand: item.price_per_hand || '',
+            flowering: item.flowering || '',
             note: item.note || '',
             survey_date: item.survey_date || today,
             recorder: item.recorder || '',
@@ -291,6 +322,15 @@ const TableView: React.FC<TableViewProps> = ({
         height_m: v.height_m,
         dbh_cm: v.dbh_cm,
         bamboo_culms: v.bamboo_culms,
+        dbh_1_cm: v.dbh_1_cm,
+        dbh_2_cm: v.dbh_2_cm,
+        dbh_3_cm: v.dbh_3_cm,
+        banana_total: v.banana_total,
+        banana_1yr: v.banana_1yr,
+        yield_bunches: v.yield_bunches,
+        yield_hands: v.yield_hands,
+        price_per_hand: v.price_per_hand,
+        flowering: v.flowering,
         note: v.note,
         survey_date: v.survey_date,
         recorder: v.recorder
@@ -305,166 +345,357 @@ const TableView: React.FC<TableViewProps> = ({
   // --- IMPORT MODE RENDER ---
 
   if (importMode) {
+    const catCounts = CATEGORIES.reduce((acc, cat) => {
+      acc[cat] = pendingData.filter(r => getRowCategory(r) === cat).length;
+      return acc;
+    }, {} as Record<PlantCategory, number>);
+    const visibleRows = pendingData.filter(r => getRowCategory(r) === activePendingCategory);
+
+    // Shared leading cells (tree code → status)
+    const renderLeadingCells = (row: PendingGrowthRecord) => (
+      <>
+        <td className="px-3 py-2">
+          <input value={row.tree_code} onChange={e => handleUpdatePending(row.id, 'tree_code', e.target.value)}
+            className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs" />
+        </td>
+        <td className="px-3 py-2">
+          <select value={row.plot_code} onChange={e => handleUpdatePending(row.id, 'plot_code', e.target.value)}
+            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-20">
+            <option value="">—</option>
+            {PLOT_LIST.map(p => <option key={p.code} value={p.code}>{p.code}</option>)}
+          </select>
+        </td>
+        <td className="px-3 py-2">
+          <select value={row.species_code} onChange={e => {
+              const s = SPECIES_LIST.find(x => x.code === e.target.value);
+              handleUpdatePending(row.id, 'species_code', e.target.value);
+              if (s) handleUpdatePending(row.id, 'species_name', s.name);
+            }}
+            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28">
+            <option value="">— เลือก —</option>
+            {SPECIES_LIST.map(s => <option key={s.code} value={s.code}>{s.code} {s.name}</option>)}
+          </select>
+        </td>
+        <td className="px-3 py-2">
+          <input value={row.tree_number} onChange={e => handleUpdatePending(row.id, 'tree_number', e.target.value)}
+            className="w-12 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+        </td>
+        <td className="px-3 py-2">
+          <div className="flex gap-1">
+            <input value={row.row_main} onChange={e => handleUpdatePending(row.id, 'row_main', e.target.value)}
+              placeholder="หลัก" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+            <span className="text-gray-400">/</span>
+            <input value={row.row_sub} onChange={e => handleUpdatePending(row.id, 'row_sub', e.target.value)}
+              placeholder="ย่อย" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
+          </div>
+        </td>
+        <td className="px-3 py-2">
+          <select value={row.status} onChange={e => handleUpdatePending(row.id, 'status', e.target.value)}
+            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs">
+            <option value="">—</option>
+            <option value="alive">รอด</option>
+            <option value="dead">ตาย</option>
+          </select>
+        </td>
+      </>
+    );
+
+    // Shared trailing cells (date → actions)
+    const renderTrailingCells = (row: PendingGrowthRecord) => (
+      <>
+        <td className="px-3 py-2">
+          <input type="date" value={row.survey_date} onChange={e => handleUpdatePending(row.id, 'survey_date', e.target.value)}
+            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28" />
+        </td>
+        <td className="px-3 py-2">
+          <input value={row.recorder} onChange={e => handleUpdatePending(row.id, 'recorder', e.target.value)}
+            className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+        </td>
+        <td className="px-3 py-2 text-center">
+          {row.verified ? (
+            <span className="inline-flex items-center gap-1 text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded-full whitespace-nowrap">
+              <Check size={11} /> ยืนยัน
+            </span>
+          ) : (
+            <span className="inline-flex items-center text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded-full whitespace-nowrap">
+              รอ
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2 text-right">
+          <div className="flex justify-end gap-1">
+            {row.verified ? (
+              <button onClick={() => handleUnverifyPending(row.id)} className="p-1 text-yellow-500 hover:bg-yellow-100 rounded" title="ยกเลิกการยืนยัน"><X size={15} /></button>
+            ) : (
+              <button onClick={() => handleVerifyPending(row.id)} className="p-1 text-green-600 hover:bg-green-100 rounded" title="ยืนยัน"><Check size={15} /></button>
+            )}
+            <button onClick={() => handleDeletePending(row.id)} className="p-1 text-red-400 hover:bg-red-50 rounded" title="ลบ"><Trash2 size={15} /></button>
+          </div>
+        </td>
+      </>
+    );
+
     return (
       <div className="flex flex-col h-full bg-gray-50">
-        <div className="p-6 bg-green-50 border-b border-green-200">
-          <div className="flex items-center justify-between mb-4">
+        {/* Header */}
+        <div className="p-4 bg-green-50 border-b border-green-200 shrink-0">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3 text-green-800">
-              <FileText size={24} />
-              <h2 className="text-xl font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (CSV/TXT/Excel)</h2>
+              <FileText size={22} />
+              <h2 className="text-lg font-bold">นำเข้าข้อมูลต้นไม้จากไฟล์ (CSV/TXT/Excel)</h2>
             </div>
             <button onClick={() => setImportMode(false)} className="text-green-700 hover:text-green-900 font-bold text-sm">
               กลับไปหน้าตาราง
             </button>
           </div>
           <div className="flex gap-4 items-center">
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept=".csv,.txt,.xlsx,.xls"
-              onChange={handleFileUpload}
-            />
+            <input type="file" ref={fileInputRef} className="hidden" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileUpload} />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isAnalyzing}
               className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
             >
-              {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+              {isAnalyzing ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
               {isAnalyzing ? 'กำลังอ่านไฟล์...' : 'อัพโหลดไฟล์'}
             </button>
             <span className="text-sm text-gray-500">รองรับไฟล์ CSV, TXT และ Excel (.xlsx, .xls)</span>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        {/* Category Tabs */}
+        {pendingData.length > 0 && (
+          <div className="px-4 pt-2 bg-white border-b border-gray-200 overflow-x-auto shrink-0">
+            <div className="flex space-x-1 min-w-max">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setActivePendingCategory(cat)}
+                  className={`px-4 py-2 text-sm font-bold rounded-t-lg transition-all flex items-center gap-2 ${
+                    activePendingCategory === cat
+                      ? 'bg-green-700 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-green-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {cat}
+                  {catCounts[cat] > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      activePendingCategory === cat ? 'bg-white/30 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}>{catCounts[cat]}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Table Area */}
+        <div className="flex-1 min-h-0 p-4 flex flex-col">
           {pendingData.length > 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h3 className="font-bold text-gray-700">รายการที่อ่านได้ ({pendingData.length})</h3>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 min-h-0 flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
+                <h3 className="font-bold text-gray-700 text-sm">
+                  {activePendingCategory} — {visibleRows.length} รายการ
+                  {visibleRows.filter(r => r.verified).length > 0 && (
+                    <span className="ml-2 text-green-600">({visibleRows.filter(r => r.verified).length} ยืนยันแล้ว)</span>
+                  )}
+                </h3>
                 <div className="flex gap-3">
-                  <button onClick={() => setPendingData(prev => prev.map(p => ({ ...p, verified: true })))} className="text-xs text-green-600 font-bold hover:underline">ยืนยันทั้งหมด</button>
+                  <button
+                    onClick={() => setPendingData(prev => prev.map(p => getRowCategory(p) === activePendingCategory ? { ...p, verified: true } : p))}
+                    className="text-xs text-green-600 font-bold hover:underline"
+                  >ยืนยันทั้งหมดในหมวดนี้</button>
                   <button onClick={() => setPendingData([])} className="text-xs text-red-600 font-bold hover:underline">ล้างทั้งหมด</button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm min-w-[1100px]">
-                  <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-bold">
-                    <tr>
-                      <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
-                      <th className="px-3 py-3 whitespace-nowrap">ประเภท</th>
-                      <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
-                      <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
-                      <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
-                      <th className="px-3 py-3 whitespace-nowrap">แถว</th>
-                      <th className="px-3 py-3 whitespace-nowrap">สถานะ</th>
-                      <th className="px-3 py-3 whitespace-nowrap text-right">สูง (ม.)</th>
-                      <th className="px-3 py-3 whitespace-nowrap text-right">RCD (ซม.)</th>
-                      <th className="px-3 py-3 whitespace-nowrap">หมายเหตุ</th>
-                      <th className="px-3 py-3 whitespace-nowrap">วันที่</th>
-                      <th className="px-3 py-3 whitespace-nowrap">ผู้บันทึก</th>
-                      <th className="px-3 py-3 text-center whitespace-nowrap">ยืนยัน</th>
-                      <th className="px-3 py-3 text-right whitespace-nowrap">จัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {pendingData.map((row) => (
-                      <tr key={row.id} className={row.verified ? 'bg-green-50' : 'hover:bg-gray-50'}>
-                        <td className="px-3 py-2">
-                          <input value={row.tree_code} onChange={e => handleUpdatePending(row.id, 'tree_code', e.target.value)}
-                            className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs" />
-                        </td>
-                        <td className="px-3 py-2">
-                          {(() => {
-                            const sg = SPECIES_LIST.find(s => s.code === row.species_code)?.group || 'A';
-                            const cat = getPlantCategory(row.species_name, sg);
-                            return <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap ${getCategoryColor(cat)}`}>{cat}</span>;
-                          })()}
-                        </td>
-                        <td className="px-3 py-2">
-                          <select value={row.plot_code} onChange={e => handleUpdatePending(row.id, 'plot_code', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-20">
-                            <option value="">—</option>
-                            {PLOT_LIST.map(p => <option key={p.code} value={p.code}>{p.code}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <select value={row.species_code} onChange={e => {
-                              const s = SPECIES_LIST.find(x => x.code === e.target.value);
-                              handleUpdatePending(row.id, 'species_code', e.target.value);
-                              if (s) handleUpdatePending(row.id, 'species_name', s.name);
-                            }}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28">
-                            <option value="">— เลือก —</option>
-                            {SPECIES_LIST.map(s => <option key={s.code} value={s.code}>{s.code} {s.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input value={row.tree_number} onChange={e => handleUpdatePending(row.id, 'tree_number', e.target.value)}
-                            className="w-12 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex gap-1">
-                            <input value={row.row_main} onChange={e => handleUpdatePending(row.id, 'row_main', e.target.value)}
-                              placeholder="หลัก" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
-                            <span className="text-gray-400">/</span>
-                            <input value={row.row_sub} onChange={e => handleUpdatePending(row.id, 'row_sub', e.target.value)}
-                              placeholder="ย่อย" className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-center" />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <select value={row.status} onChange={e => handleUpdatePending(row.id, 'status', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs">
-                            <option value="">—</option>
-                            <option value="alive">รอด</option>
-                            <option value="dead">ตาย</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <input value={row.height_m} onChange={e => handleUpdatePending(row.id, 'height_m', e.target.value)}
-                            className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <input value={row.dbh_cm} onChange={e => handleUpdatePending(row.id, 'dbh_cm', e.target.value)}
-                            className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input value={row.note} onChange={e => handleUpdatePending(row.id, 'note', e.target.value)}
-                            className="w-32 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input type="date" value={row.survey_date} onChange={e => handleUpdatePending(row.id, 'survey_date', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs w-28" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input value={row.recorder} onChange={e => handleUpdatePending(row.id, 'recorder', e.target.value)}
-                            className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {row.verified ? (
-                            <span className="inline-flex items-center gap-1 text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded-full whitespace-nowrap">
-                              <Check size={11} /> ยืนยัน
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded-full whitespace-nowrap">
-                              รอ
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex justify-end gap-1">
-                            {row.verified ? (
-                              <button onClick={() => handleUnverifyPending(row.id)} className="p-1 text-yellow-500 hover:bg-yellow-100 rounded" title="ยกเลิกการยืนยัน"><X size={15} /></button>
-                            ) : (
-                              <button onClick={() => handleVerifyPending(row.id)} className="p-1 text-green-600 hover:bg-green-100 rounded" title="ยืนยัน"><Check size={15} /></button>
-                            )}
-                            <button onClick={() => handleDeletePending(row.id)} className="p-1 text-red-400 hover:bg-red-50 rounded" title="ลบ"><Trash2 size={15} /></button>
-                          </div>
-                        </td>
+
+              <div className="overflow-auto flex-1">
+                {/* Standard trees: ไม้ป่า / ยางพารา / ไม้ผล */}
+                {(activePendingCategory === 'ไม้ป่า' || activePendingCategory === 'ยางพารา' || activePendingCategory === 'ไม้ผล') && (
+                  <table className="w-full text-left text-sm" aria-label={`ตารางตรวจสอบข้อมูล ${activePendingCategory}`}>
+                    <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-bold sticky top-0">
+                      <tr>
+                        <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แถว (หลัก/ย่อย)</th>
+                        <th className="px-3 py-3 whitespace-nowrap">สถานะ</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">RCD (ซม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">สูง (ม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-center">ดอก/ผล</th>
+                        <th className="px-3 py-3 whitespace-nowrap">หมายเหตุ</th>
+                        <th className="px-3 py-3 whitespace-nowrap">วันที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ผู้บันทึก</th>
+                        <th className="px-3 py-3 text-center whitespace-nowrap">ยืนยัน</th>
+                        <th className="px-3 py-3 text-right whitespace-nowrap">จัดการ</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {visibleRows.map(row => (
+                        <tr key={row.id} className={row.verified ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                          {renderLeadingCells(row)}
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.dbh_cm} onChange={e => handleUpdatePending(row.id, 'dbh_cm', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.height_m} onChange={e => handleUpdatePending(row.id, 'height_m', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <select value={row.flowering} onChange={e => handleUpdatePending(row.id, 'flowering', e.target.value)}
+                              className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs">
+                              <option value="">—</option>
+                              <option value="yes">🌸 ใช่</option>
+                              <option value="no">ไม่</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <input value={row.note} onChange={e => handleUpdatePending(row.id, 'note', e.target.value)}
+                              className="w-32 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+                          </td>
+                          {renderTrailingCells(row)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Bamboo: ผลผลิตไผ่ */}
+                {activePendingCategory === 'ผลผลิตไผ่' && (
+                  <table className="w-full text-left text-sm" aria-label="ตารางตรวจสอบข้อมูลผลผลิตไผ่">
+                    <thead className="bg-yellow-50 text-gray-600 text-xs uppercase font-bold sticky top-0">
+                      <tr>
+                        <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แถว (หลัก/ย่อย)</th>
+                        <th className="px-3 py-3 whitespace-nowrap">สถานะ</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">จำนวนลำ</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">RCD ลำ 1 (ซม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">RCD ลำ 2 (ซม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">RCD ลำ 3 (ซม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">สูง (ม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap">หมายเหตุ</th>
+                        <th className="px-3 py-3 whitespace-nowrap">วันที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ผู้บันทึก</th>
+                        <th className="px-3 py-3 text-center whitespace-nowrap">ยืนยัน</th>
+                        <th className="px-3 py-3 text-right whitespace-nowrap">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {visibleRows.map(row => (
+                        <tr key={row.id} className={row.verified ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                          {renderLeadingCells(row)}
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.bamboo_culms} onChange={e => handleUpdatePending(row.id, 'bamboo_culms', e.target.value)}
+                              className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.dbh_1_cm} onChange={e => handleUpdatePending(row.id, 'dbh_1_cm', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.dbh_2_cm} onChange={e => handleUpdatePending(row.id, 'dbh_2_cm', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.dbh_3_cm} onChange={e => handleUpdatePending(row.id, 'dbh_3_cm', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.height_m} onChange={e => handleUpdatePending(row.id, 'height_m', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input value={row.note} onChange={e => handleUpdatePending(row.id, 'note', e.target.value)}
+                              className="w-32 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+                          </td>
+                          {renderTrailingCells(row)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Banana: กล้วย */}
+                {activePendingCategory === 'กล้วย' && (
+                  <table className="w-full text-left text-sm" aria-label="ตารางตรวจสอบข้อมูลกล้วย">
+                    <thead className="bg-lime-50 text-gray-600 text-xs uppercase font-bold sticky top-0">
+                      <tr>
+                        <th className="px-3 py-3 whitespace-nowrap">Tree Code</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แปลง</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ชนิดพันธุ์</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ต้นที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">แถว (หลัก/ย่อย)</th>
+                        <th className="px-3 py-3 whitespace-nowrap">สถานะ</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">ต้นรวม</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">ต้น 1 ปี</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">สูง (ม.)</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">เครือ</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">หวี</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-right">ราคา/หวี</th>
+                        <th className="px-3 py-3 whitespace-nowrap text-center">ดอก/ผล</th>
+                        <th className="px-3 py-3 whitespace-nowrap">หมายเหตุ</th>
+                        <th className="px-3 py-3 whitespace-nowrap">วันที่</th>
+                        <th className="px-3 py-3 whitespace-nowrap">ผู้บันทึก</th>
+                        <th className="px-3 py-3 text-center whitespace-nowrap">ยืนยัน</th>
+                        <th className="px-3 py-3 text-right whitespace-nowrap">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {visibleRows.map(row => (
+                        <tr key={row.id} className={row.verified ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                          {renderLeadingCells(row)}
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.banana_total} onChange={e => handleUpdatePending(row.id, 'banana_total', e.target.value)}
+                              className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.banana_1yr} onChange={e => handleUpdatePending(row.id, 'banana_1yr', e.target.value)}
+                              className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.height_m} onChange={e => handleUpdatePending(row.id, 'height_m', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.yield_bunches} onChange={e => handleUpdatePending(row.id, 'yield_bunches', e.target.value)}
+                              className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.yield_hands} onChange={e => handleUpdatePending(row.id, 'yield_hands', e.target.value)}
+                              className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input value={row.price_per_hand} onChange={e => handleUpdatePending(row.id, 'price_per_hand', e.target.value)}
+                              className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 outline-none font-mono text-xs text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <select value={row.flowering} onChange={e => handleUpdatePending(row.id, 'flowering', e.target.value)}
+                              className="bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs">
+                              <option value="">—</option>
+                              <option value="yes">🌸 ใช่</option>
+                              <option value="no">ไม่</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <input value={row.note} onChange={e => handleUpdatePending(row.id, 'note', e.target.value)}
+                              className="w-32 bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs" />
+                          </td>
+                          {renderTrailingCells(row)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {visibleRows.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                    <p className="text-sm">ไม่มีข้อมูลประเภท <strong>{activePendingCategory}</strong> ในไฟล์ที่อัพโหลด</p>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -475,7 +706,8 @@ const TableView: React.FC<TableViewProps> = ({
           )}
         </div>
 
-        <div className="p-4 bg-white border-t border-gray-200 flex justify-end gap-3 items-center">
+        {/* Footer */}
+        <div className="p-4 bg-white border-t border-gray-200 flex justify-end gap-3 items-center shrink-0">
           <span className="text-sm text-gray-500 mr-auto">
             ยืนยันแล้ว: <span className="font-bold text-green-600">{pendingData.filter(p => p.verified).length}</span> / {pendingData.length}
           </span>
