@@ -11,8 +11,7 @@
     "test": "echo 'No tests configured yet – skipping.' && exit 0"
   },
   "dependencies": {
-    "@google/genai": "^1.42.0",
-    "body-parser": "^2.2.2",
+"body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
